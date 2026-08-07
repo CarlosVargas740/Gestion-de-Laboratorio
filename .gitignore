@@ -1,0 +1,4 @@
+node_modules/
+data/laboratory.sqlite
+*.log
+.DS_Store

@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestión de Laboratorio Clínico</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
 
     <main class="app-shell">
+      <div class="session-bar">
+        <span>Sesión activa: <strong id="sessionUsername">-</strong></span>
+        <button class="secondary-btn" type="button" id="logoutButton">Cerrar sesión</button>
+      </div>
+
       <section class="hero-card">
         <div>
           <p class="eyebrow">Hospital Rural de San Carlos</p>
@@ -92,6 +98,21 @@
           </article>
         </div>
 
+        <div class="charts-grid">
+          <article class="chart-card">
+            <h3>Estudios por estado</h3>
+            <canvas id="chartStatus"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>Estudios por tipo</h3>
+            <canvas id="chartType"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>Pacientes por área</h3>
+            <canvas id="chartArea"></canvas>
+          </article>
+        </div>
+
         <div class="report-columns">
           <article class="report-list">
             <h3>Estado de estudios</h3>
@@ -129,6 +150,16 @@
           <h3>Actividad reciente</h3>
           <ul id="recentActivityList"></ul>
         </article>
+      </section>
+
+      <section class="panel report-panel activity-log-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Bitácora de actividad</h2>
+            <p>Registro de quién capturó, editó o eliminó información en el sistema.</p>
+          </div>
+        </div>
+        <ul class="activity-log-list" id="activityLogList"></ul>
       </section>
 
       <section class="grid-layout">
@@ -284,6 +315,8 @@
             <textarea id="studyNotes" rows="3" maxlength="180"></textarea>
           </label>
 
+          <div class="result-parameters-grid" id="studyResultParameters" hidden></div>
+
           <button class="primary-btn" type="submit">Guardar estudio</button>
         </form>
       </section>
@@ -317,6 +350,7 @@
             <tbody id="patientsTable"></tbody>
           </table>
         </div>
+        <div class="pagination" id="patientsPagination"></div>
       </section>
 
       <section class="panel list-panel">
@@ -371,6 +405,7 @@
             <tbody id="recordsTable"></tbody>
           </table>
         </div>
+        <div class="pagination" id="recordsPagination"></div>
       </section>
 
       <template id="patientsEmptyStateTemplate">
@@ -611,6 +646,8 @@
               Observaciones
               <textarea id="editStudyNotes" rows="3" maxlength="180"></textarea>
             </label>
+
+            <div class="result-parameters-grid" id="editStudyResultParameters" hidden></div>
 
             <button class="primary-btn" type="submit">Guardar cambios del estudio</button>
           </form>

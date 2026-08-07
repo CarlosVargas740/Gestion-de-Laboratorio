@@ -89,6 +89,146 @@ const totalStudies = document.getElementById('totalStudies');
 const pendingResults = document.getElementById('pendingResults');
 const deliveredResults = document.getElementById('deliveredResults');
 
+const sessionUsername = document.getElementById('sessionUsername');
+const logoutButton = document.getElementById('logoutButton');
+const activityLogList = document.getElementById('activityLogList');
+const patientsPagination = document.getElementById('patientsPagination');
+const recordsPagination = document.getElementById('recordsPagination');
+const studyResultParametersContainer = document.getElementById('studyResultParameters');
+const editStudyResultParametersContainer = document.getElementById('editStudyResultParameters');
+
+const REFERENCE_RANGES = {
+  'Biometría hemática': [
+    { key: 'hemoglobina', label: 'Hemoglobina', unit: 'g/dL', min: 12, max: 16.5 },
+    { key: 'hematocrito', label: 'Hematocrito', unit: '%', min: 36, max: 50 },
+    { key: 'leucocitos', label: 'Leucocitos', unit: 'x10³/µL', min: 4.5, max: 11 },
+    { key: 'plaquetas', label: 'Plaquetas', unit: 'x10³/µL', min: 150, max: 450 }
+  ],
+  'Química sanguínea': [
+    { key: 'glucosa', label: 'Glucosa', unit: 'mg/dL', min: 70, max: 100 },
+    { key: 'colesterol', label: 'Colesterol total', unit: 'mg/dL', min: 0, max: 200 },
+    { key: 'trigliceridos', label: 'Triglicéridos', unit: 'mg/dL', min: 0, max: 150 },
+    { key: 'urea', label: 'Urea', unit: 'mg/dL', min: 15, max: 40 },
+    { key: 'creatinina', label: 'Creatinina', unit: 'mg/dL', min: 0.6, max: 1.3 }
+  ]
+};
+
+function getFlagForValue(value, min, max) {
+  if (value === '' || value === null || value === undefined || Number.isNaN(Number(value))) {
+    return null;
+  }
+
+  const numeric = Number(value);
+  if (numeric < min) {
+    return 'Bajo';
+  }
+  if (numeric > max) {
+    return 'Alto';
+  }
+  return 'Normal';
+}
+
+function renderResultParameterFields(container, studyTypeValue, existingValues = {}) {
+  const parameters = REFERENCE_RANGES[studyTypeValue];
+  if (!container) {
+    return;
+  }
+
+  if (!parameters) {
+    container.innerHTML = '';
+    container.hidden = true;
+    return;
+  }
+
+  container.hidden = false;
+  container.innerHTML = parameters
+    .map((parameter) => {
+      const savedValue = existingValues[parameter.key] ?? '';
+      return `
+        <div class="result-parameter-field">
+          <label for="param-${container.id}-${parameter.key}">${parameter.label}</label>
+          <input
+            type="number"
+            step="0.01"
+            id="param-${container.id}-${parameter.key}"
+            data-param-key="${parameter.key}"
+            data-param-min="${parameter.min}"
+            data-param-max="${parameter.max}"
+            value="${savedValue}"
+            placeholder="${parameter.min} - ${parameter.max}"
+          />
+          <small>Rango normal: ${parameter.min} - ${parameter.max} ${parameter.unit}</small>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function collectResultParameters(container, studyTypeValue) {
+  const parameters = REFERENCE_RANGES[studyTypeValue];
+  if (!container || !parameters) {
+    return '';
+  }
+
+  const values = {};
+  let hasAnyValue = false;
+
+  parameters.forEach((parameter) => {
+    const input = container.querySelector(`[data-param-key="${parameter.key}"]`);
+    if (input && input.value !== '') {
+      values[parameter.key] = Number(input.value);
+      hasAnyValue = true;
+    }
+  });
+
+  return hasAnyValue ? JSON.stringify(values) : '';
+}
+
+function buildResultFlagBadge(study) {
+  if (!study.resultParameters) {
+    return '';
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(study.resultParameters);
+  } catch {
+    return '';
+  }
+
+  const parameters = REFERENCE_RANGES[study.type];
+  if (!parameters) {
+    return '';
+  }
+
+  const flags = parameters
+    .map((parameter) => {
+      const value = parsed[parameter.key];
+      if (value === undefined) {
+        return null;
+      }
+      return getFlagForValue(value, parameter.min, parameter.max);
+    })
+    .filter(Boolean);
+
+  if (flags.length === 0) {
+    return '';
+  }
+
+  const worst = flags.includes('Alto') || flags.includes('Bajo') ? 'alterados' : 'normal';
+  const cssClass = worst === 'normal' ? 'result-flag-normal' : (flags.includes('Alto') ? 'result-flag-alto' : 'result-flag-bajo');
+  const label = worst === 'normal' ? 'Valores normales' : 'Valores alterados';
+  return `<span class="result-flag ${cssClass}">${label}</span>`;
+}
+
+let patientsPage = 1;
+let recordsPage = 1;
+const PAGE_SIZE = 8;
+
+let statusChart = null;
+let typeChart = null;
+let areaChart = null;
+
 const patientName = document.getElementById('patientName');
 const patientId = document.getElementById('patientId');
 const patientAge = document.getElementById('patientAge');
@@ -243,16 +383,55 @@ function refreshStudySelect() {
   fillSelect(editStudyPatient, 'Primero agrega un paciente');
 }
 
+function paginate(items, page, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * pageSize;
+  return {
+    pageItems: items.slice(start, start + pageSize),
+    totalPages,
+    safePage
+  };
+}
+
+function renderPaginationControls(container, safePage, totalPages, onPageChange) {
+  if (!container) {
+    return;
+  }
+
+  if (totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <button type="button" data-page="prev" ${safePage <= 1 ? 'disabled' : ''}>Anterior</button>
+    <span>Página ${safePage} de ${totalPages}</span>
+    <button type="button" data-page="next" ${safePage >= totalPages ? 'disabled' : ''}>Siguiente</button>
+  `;
+
+  container.querySelectorAll('button[data-page]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const direction = button.dataset.page === 'next' ? 1 : -1;
+      onPageChange(safePage + direction);
+    });
+  });
+}
+
 function renderPatients() {
   const query = searchInput.value.trim().toLowerCase();
-  const rows = patients
+  const filtered = patients.filter((patient) => {
+    const patientAreaValue = patient.area || 'Consulta externa';
+    const searchTarget = `${patient.name} ${patient.patientCode} ${patient.sex || ''} ${patient.phone || ''} ${patientAreaValue} ${patient.municipality || ''} ${patient.locality || ''} ${patient.affiliation || ''}`.toLowerCase();
+    return !query || searchTarget.includes(query);
+  });
+
+  const { pageItems, totalPages, safePage } = paginate(filtered, patientsPage, PAGE_SIZE);
+  patientsPage = safePage;
+
+  const rows = pageItems
     .map((patient) => {
       const patientAreaValue = patient.area || 'Consulta externa';
-      const searchTarget = `${patient.name} ${patient.patientCode} ${patient.sex || ''} ${patient.phone || ''} ${patientAreaValue} ${patient.municipality || ''} ${patient.locality || ''} ${patient.affiliation || ''}`.toLowerCase();
-      if (query && !searchTarget.includes(query)) {
-        return null;
-      }
-
       return `
         <tr>
           <td>${patient.name}</td>
@@ -272,40 +451,58 @@ function renderPatients() {
         </tr>
       `;
     })
-    .filter(Boolean)
     .join('');
 
   patientsTable.innerHTML = rows || patientsEmptyStateTemplate.innerHTML;
+  renderPaginationControls(patientsPagination, safePage, totalPages, (newPage) => {
+    patientsPage = newPage;
+    renderPatients();
+  });
 }
 
 function renderRecords() {
   const query = searchInput.value.trim().toLowerCase();
   const selectedArea = areaFilter.value;
   const selectedStatus = statusFilter.value;
-  const rows = studies
+  const filtered = studies.filter((study) => {
+    const patient = patients.find((item) => item.id === study.patientId) || study.patient;
+    if (!patient) {
+      return false;
+    }
+
+    const area = patient.area || 'Consulta externa';
+    const priority = study.priority || 'Normal';
+    const status = study.status || 'Pendiente';
+    const doctor = study.doctor || '';
+    const folio = study.folio || '';
+    const searchTarget = `${patient.name} ${patient.patientCode} ${area} ${study.type || ''} ${priority} ${status} ${doctor} ${folio} ${study.sampleType || ''} ${study.sampleCondition || ''} ${study.diagnosis || ''}`.toLowerCase();
+
+    if (query && !searchTarget.includes(query)) {
+      return false;
+    }
+
+    if (selectedArea && area !== selectedArea) {
+      return false;
+    }
+
+    if (selectedStatus && status !== selectedStatus) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const { pageItems, totalPages, safePage } = paginate(filtered, recordsPage, PAGE_SIZE);
+  recordsPage = safePage;
+
+  const rows = pageItems
     .map((study) => {
       const patient = patients.find((item) => item.id === study.patientId) || study.patient;
-      if (!patient) {
-        return null;
-      }
-
       const area = patient.area || 'Consulta externa';
       const priority = study.priority || 'Normal';
       const status = study.status || 'Pendiente';
       const doctor = study.doctor || '';
       const folio = study.folio || '';
-      const searchTarget = `${patient.name} ${patient.patientCode} ${area} ${study.type || ''} ${priority} ${status} ${doctor} ${folio} ${study.sampleType || ''} ${study.sampleCondition || ''} ${study.diagnosis || ''}`.toLowerCase();
-      if (query && !searchTarget.includes(query)) {
-        return null;
-      }
-
-      if (selectedArea && area !== selectedArea) {
-        return null;
-      }
-
-      if (selectedStatus && status !== selectedStatus) {
-        return null;
-      }
 
       return `
         <tr>
@@ -321,6 +518,7 @@ function renderRecords() {
           <td>
             <div class="status-stack">
               <span class="tag tag-${status.toLowerCase().replace(/\s+/g, '-')}">${status}</span>
+              ${buildResultFlagBadge(study)}
               ${study.diagnosis ? `<small>Dx: ${study.diagnosis}</small>` : ''}
               ${study.sampleCondition ? `<small>Muestra: ${study.sampleCondition}</small>` : ''}
               ${folio ? `<small>Folio: ${folio}</small>` : ''}
@@ -337,10 +535,13 @@ function renderRecords() {
         </tr>
       `;
     })
-    .filter(Boolean)
     .join('');
 
   recordsTable.innerHTML = rows || emptyStateTemplate.innerHTML;
+  renderPaginationControls(recordsPagination, safePage, totalPages, (newPage) => {
+    recordsPage = newPage;
+    renderRecords();
+  });
 }
 
 function renderReports() {
@@ -366,6 +567,7 @@ function renderReports() {
     reportAffiliationList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportSampleList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportConditionList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
+    renderCharts({}, {}, {});
     return;
   }
 
@@ -419,6 +621,73 @@ function renderReports() {
     });
 
   recentActivityList.innerHTML = recentStudies.join('') || '<li>No hay actividad reciente.</li>';
+
+  renderCharts(statusCounts, studyCounts, areaCounts);
+}
+
+const CHART_PALETTE = ['#1f6f78', '#e2823a', '#5f6778', '#13484e', '#d5efef', '#a3312f', '#9a5321'];
+
+function buildChart(existingChart, canvasId, type, labels, values) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') {
+    return existingChart;
+  }
+
+  if (existingChart) {
+    existingChart.destroy();
+  }
+
+  return new Chart(canvas, {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: labels.map((_, index) => CHART_PALETTE[index % CHART_PALETTE.length]),
+        borderWidth: type === 'bar' ? 0 : 2,
+        borderColor: '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: type !== 'bar',
+          position: 'bottom',
+          labels: { boxWidth: 10, font: { size: 10 } }
+        }
+      },
+      scales: type === 'bar' ? {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      } : undefined
+    }
+  });
+}
+
+function renderCharts(statusCounts, studyCounts, areaCounts) {
+  statusChart = buildChart(statusChart, 'chartStatus', 'doughnut', Object.keys(statusCounts), Object.values(statusCounts));
+  typeChart = buildChart(typeChart, 'chartType', 'bar', Object.keys(studyCounts), Object.values(studyCounts));
+  areaChart = buildChart(areaChart, 'chartArea', 'doughnut', Object.keys(areaCounts), Object.values(areaCounts));
+}
+
+async function loadActivityLog() {
+  if (!activityLogList) {
+    return;
+  }
+
+  try {
+    const entries = await requestJson('/api/activity-log');
+    activityLogList.innerHTML = entries
+      .map((entry) => `
+        <li>
+          <span><strong>${entry.username}</strong> — ${entry.action}${entry.description ? `: ${entry.description}` : ''}</span>
+          <span class="log-meta">${entry.createdAt}</span>
+        </li>
+      `)
+      .join('') || '<li>Sin actividad registrada todavía.</li>';
+  } catch {
+    activityLogList.innerHTML = '<li>No se pudo cargar la bitácora.</li>';
+  }
 }
 
 function openModal(mode, title, subtitle) {
@@ -646,6 +915,7 @@ function updateViews() {
   renderPatients();
   renderRecords();
   renderReports();
+  loadActivityLog();
 }
 
 function resetPatientForm() {
@@ -661,6 +931,7 @@ function resetStudyForm() {
   studySampleType.value = 'Sangre';
   studyFastingHours.value = 0;
   studySampleCondition.value = 'Adecuada';
+  renderResultParameterFields(studyResultParametersContainer, '');
   studyType.focus();
 }
 
@@ -752,7 +1023,8 @@ function buildStudyPayload(existingStudy = null) {
     diagnosis: studyDiagnosis.value.trim(),
     doctor: studyDoctor.value.trim(),
     folio: studyFolio.value.trim(),
-    notes: studyNotes.value.trim()
+    notes: studyNotes.value.trim(),
+    resultParameters: collectResultParameters(studyResultParametersContainer, studyType.value.trim())
   };
 
   return payload;
@@ -783,6 +1055,7 @@ function fillStudyForm(study) {
   studyDoctor.value = study.doctor || '';
   studyFolio.value = study.folio || '';
   studyNotes.value = study.notes || '';
+  renderResultParameterFields(studyResultParametersContainer, study.type || '');
 }
 
 async function editPatient(patientIdValue) {
@@ -843,6 +1116,17 @@ async function editStudy(studyIdValue) {
   editStudyDoctor.value = study.doctor || '';
   editStudyFolio.value = study.folio || '';
   editStudyNotes.value = study.notes || '';
+
+  let existingValues = {};
+  if (study.resultParameters) {
+    try {
+      existingValues = JSON.parse(study.resultParameters);
+    } catch {
+      existingValues = {};
+    }
+  }
+  renderResultParameterFields(editStudyResultParametersContainer, study.type || '', existingValues);
+
   openModal('study', 'Editar estudio', 'Actualiza el estudio y su seguimiento.');
 }
 
@@ -1121,12 +1405,20 @@ studyForm.addEventListener('submit', async (event) => {
 });
 
 searchInput.addEventListener('input', () => {
+  patientsPage = 1;
+  recordsPage = 1;
   renderPatients();
   renderRecords();
 });
 
-areaFilter.addEventListener('change', renderRecords);
-statusFilter.addEventListener('change', renderRecords);
+areaFilter.addEventListener('change', () => {
+  recordsPage = 1;
+  renderRecords();
+});
+statusFilter.addEventListener('change', () => {
+  recordsPage = 1;
+  renderRecords();
+});
 
 patientsTable.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
@@ -1221,12 +1513,21 @@ editStudyForm.addEventListener('submit', async (event) => {
       diagnosis: editStudyDiagnosis.value.trim(),
       doctor: editStudyDoctor.value.trim(),
       folio: editStudyFolio.value.trim(),
-      notes: editStudyNotes.value.trim()
+      notes: editStudyNotes.value.trim(),
+      resultParameters: collectResultParameters(editStudyResultParametersContainer, editStudyType.value.trim())
     }, editStudyRecordId.value);
     closeModal();
   } catch (error) {
     alert(error.message);
   }
+});
+
+studyType.addEventListener('change', () => {
+  renderResultParameterFields(studyResultParametersContainer, studyType.value);
+});
+
+editStudyType.addEventListener('change', () => {
+  renderResultParameterFields(editStudyResultParametersContainer, editStudyType.value);
 });
 
 document.addEventListener('keydown', (event) => {
@@ -1235,7 +1536,32 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+async function checkSession() {
+  try {
+    const session = await requestJson('/api/session');
+    sessionUsername.textContent = session.fullName || session.username;
+    return true;
+  } catch {
+    window.location.href = '/login.html';
+    return false;
+  }
+}
+
+logoutButton.addEventListener('click', async () => {
+  try {
+    await requestJson('/api/logout', { method: 'POST' });
+  } catch {
+    // Si falla, igual mandamos al login.
+  }
+  window.location.href = '/login.html';
+});
+
 async function init() {
+  const hasSession = await checkSession();
+  if (!hasSession) {
+    return;
+  }
+
   try {
     await loadData();
     await migrateLegacyDataIfNeeded();

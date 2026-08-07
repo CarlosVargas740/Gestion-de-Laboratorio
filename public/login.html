@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar sesión · Gestión de Laboratorio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="background-orb orb-one"></div>
+  <div class="background-orb orb-two"></div>
+
+  <main class="login-shell">
+    <form class="panel login-card" id="loginForm">
+      <div class="login-header">
+        <p class="eyebrow">Hospital Rural de San Carlos</p>
+        <h1>Gestión de Laboratorio</h1>
+        <p class="muted">Inicia sesión para acceder al sistema.</p>
+      </div>
+
+      <label>
+        Usuario
+        <input type="text" id="loginUsername" autocomplete="username" required maxlength="40" />
+      </label>
+
+      <label>
+        Contraseña
+        <input type="password" id="loginPassword" autocomplete="current-password" required maxlength="60" />
+      </label>
+
+      <p class="login-error" id="loginError" hidden></p>
+
+      <button class="primary-btn" type="submit">Entrar</button>
+
+      <p class="login-hint">Cuenta inicial: <strong>admin</strong> / <strong>admin123</strong></p>
+    </form>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>

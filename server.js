@@ -1,12 +1,15 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const port = process.env.PORT || 3000;
 const publicDir = path.join(__dirname, 'public');
 const dataDir = path.join(__dirname, 'data');
 const dbPath = path.join(dataDir, 'laboratory.sqlite');
+const SESSION_COOKIE = 'lab_session';
+const SESSION_DURATION_MS = 1000 * 60 * 60 * 8; // 8 horas
 
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -53,6 +56,34 @@ db.exec(`
     updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    fullName TEXT NOT NULL DEFAULT '',
+    passwordHash TEXT NOT NULL,
+    passwordSalt TEXT NOT NULL,
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    username TEXT NOT NULL,
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expiresAt TEXT NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity TEXT NOT NULL,
+    entityId TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 function ensureColumn(tableName, columnName, definition) {
@@ -73,6 +104,76 @@ ensureColumn('studies', 'resultFileName', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultFileType', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultFileData', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultFileUploadedAt', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('studies', 'resultParameters', "TEXT NOT NULL DEFAULT ''");
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function createUser(username, password, fullName = '') {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const passwordHash = hashPassword(password, salt);
+  const id = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO users (id, username, fullName, passwordHash, passwordSalt)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, username, fullName, passwordHash, salt);
+  return id;
+}
+
+const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
+if (userCount === 0) {
+  createUser('admin', 'admin123', 'Administrador del laboratorio');
+  console.log('Usuario inicial creado -> usuario: admin / contraseña: admin123 (cámbiala después de iniciar sesión)');
+}
+
+function logActivity(username, action, entity, entityId, description) {
+  db.prepare(`
+    INSERT INTO activity_log (id, username, action, entity, entityId, description)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(crypto.randomUUID(), username || 'desconocido', action, entity, entityId || '', description || '');
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const cookies = {};
+  if (!header) {
+    return cookies;
+  }
+
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) {
+      continue;
+    }
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    cookies[key] = decodeURIComponent(value);
+  }
+
+  return cookies;
+}
+
+function getSessionUser(req) {
+  const cookies = parseCookies(req);
+  const token = cookies[SESSION_COOKIE];
+  if (!token) {
+    return null;
+  }
+
+  const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
+  if (!session) {
+    return null;
+  }
+
+  if (new Date(session.expiresAt).getTime() < Date.now()) {
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    return null;
+  }
+
+  return { userId: session.userId, username: session.username, token };
+}
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -187,6 +288,7 @@ function mapStudy(row) {
     resultFileType: row.resultFileType || '',
     resultFileData: row.resultFileData || '',
     resultFileUploadedAt: row.resultFileUploadedAt || '',
+    resultParameters: row.resultParameters || '',
     doctor: row.doctor || '',
     folio: row.folio || '',
     notes: row.notes || '',
@@ -239,6 +341,12 @@ function validateStudy(payload) {
   const resultFileType = String(payload.resultFileType || '').trim();
   const resultFileData = String(payload.resultFileData || '').trim();
   const resultFileUploadedAt = String(payload.resultFileUploadedAt || '').trim();
+  let resultParameters = '';
+  if (typeof payload.resultParameters === 'string') {
+    resultParameters = payload.resultParameters.trim();
+  } else if (payload.resultParameters && typeof payload.resultParameters === 'object') {
+    resultParameters = JSON.stringify(payload.resultParameters);
+  }
   const doctor = String(payload.doctor || '').trim();
   const folio = String(payload.folio || '').trim();
   const notes = String(payload.notes || '').trim();
@@ -247,14 +355,74 @@ function validateStudy(payload) {
     return null;
   }
 
-  return { patientId, type, date, priority, status, sampleType, fastingHours: Number.isNaN(fastingHours) ? 0 : fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, doctor, folio, notes };
+  return { patientId, type, date, priority, status, sampleType, fastingHours: Number.isNaN(fastingHours) ? 0 : fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, resultParameters, doctor, folio, notes };
 }
+
+const PUBLIC_ROUTES = new Set(['/api/health', '/api/login']);
 
 function handleApi(req, res, requestUrl) {
   const { pathname } = requestUrl;
 
   if (req.method === 'GET' && pathname === '/api/health') {
     sendJson(res, 200, { ok: true, database: 'sqlite' });
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/login') {
+    readBody(req)
+      .then((body) => {
+        const username = String(body.username || '').trim();
+        const password = String(body.password || '');
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+        if (!user || hashPassword(password, user.passwordSalt) !== user.passwordHash) {
+          sendJson(res, 401, { error: 'Usuario o contraseña incorrectos' });
+          return;
+        }
+
+        const token = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+        db.prepare(`
+          INSERT INTO sessions (token, userId, username, expiresAt)
+          VALUES (?, ?, ?, ?)
+        `).run(token, user.id, user.username, expiresAt);
+
+        logActivity(user.username, 'Inicio de sesión', 'auth', user.id, '');
+
+        res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DURATION_MS / 1000}`);
+        sendJson(res, 200, { ok: true, username: user.username, fullName: user.fullName });
+      })
+      .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
+    return true;
+  }
+
+  // A partir de aquí, todas las rutas requieren sesión iniciada.
+  if (!PUBLIC_ROUTES.has(pathname)) {
+    const sessionUser = getSessionUser(req);
+    if (!sessionUser) {
+      sendJson(res, 401, { error: 'Sesión no válida, inicia sesión de nuevo' });
+      return true;
+    }
+    req.sessionUser = sessionUser;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/session') {
+    const user = db.prepare('SELECT username, fullName FROM users WHERE id = ?').get(req.sessionUser.userId);
+    sendJson(res, 200, { username: req.sessionUser.username, fullName: user?.fullName || '' });
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/logout') {
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(req.sessionUser.token);
+    logActivity(req.sessionUser.username, 'Cierre de sesión', 'auth', req.sessionUser.userId, '');
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/activity-log') {
+    const rows = db.prepare('SELECT * FROM activity_log ORDER BY createdAt DESC LIMIT 30').all();
+    sendJson(res, 200, rows);
     return true;
   }
 
@@ -300,6 +468,7 @@ function handleApi(req, res, requestUrl) {
         `).run(id, payload.name, payload.patientCode, payload.age, payload.sex, payload.phone, payload.area, payload.municipality, payload.locality, payload.affiliation);
 
         const created = db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+        logActivity(req.sessionUser.username, 'Registró paciente', 'patient', id, `${payload.name} (${payload.patientCode})`);
         sendJson(res, 201, mapPatient(created));
       })
       .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
@@ -334,6 +503,7 @@ function handleApi(req, res, requestUrl) {
         }
 
         const updated = db.prepare('SELECT * FROM patients WHERE id = ?').get(patientId);
+        logActivity(req.sessionUser.username, 'Actualizó paciente', 'patient', patientId, `${payload.name} (${payload.patientCode})`);
         sendJson(res, 200, mapPatient(updated));
       })
       .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
@@ -342,12 +512,14 @@ function handleApi(req, res, requestUrl) {
 
   if (req.method === 'DELETE' && pathname.startsWith('/api/patients/')) {
     const patientId = pathname.split('/').pop();
+    const existingPatient = db.prepare('SELECT * FROM patients WHERE id = ?').get(patientId);
     const result = db.prepare('DELETE FROM patients WHERE id = ?').run(patientId);
     if (result.changes === 0) {
       sendJson(res, 404, { error: 'Paciente no encontrado' });
       return true;
     }
 
+    logActivity(req.sessionUser.username, 'Eliminó paciente', 'patient', patientId, existingPatient ? `${existingPatient.name} (${existingPatient.patientCode})` : '');
     sendJson(res, 200, { ok: true });
     return true;
   }
@@ -374,9 +546,9 @@ function handleApi(req, res, requestUrl) {
 
         const id = String(body.id || crypto.randomUUID()).trim() || crypto.randomUUID();
         db.prepare(`
-          INSERT INTO studies (id, patientId, type, date, priority, status, sampleType, fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, doctor, folio, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, payload.patientId, payload.type, payload.date, payload.priority, payload.status, payload.sampleType, payload.fastingHours, payload.sampleCondition, payload.diagnosis, payload.resultFileName, payload.resultFileType, payload.resultFileData, payload.resultFileUploadedAt, payload.doctor, payload.folio, payload.notes);
+          INSERT INTO studies (id, patientId, type, date, priority, status, sampleType, fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, resultParameters, doctor, folio, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, payload.patientId, payload.type, payload.date, payload.priority, payload.status, payload.sampleType, payload.fastingHours, payload.sampleCondition, payload.diagnosis, payload.resultFileName, payload.resultFileType, payload.resultFileData, payload.resultFileUploadedAt, payload.resultParameters, payload.doctor, payload.folio, payload.notes);
 
         const created = db.prepare(`
           SELECT studies.*, patients.name AS patientName, patients.patientCode AS patientCode, patients.age AS patientAge,
@@ -386,6 +558,7 @@ function handleApi(req, res, requestUrl) {
           WHERE studies.id = ?
         `).get(id);
 
+        logActivity(req.sessionUser.username, 'Registró estudio', 'study', id, `${payload.type} - ${created.patientName || ''}`);
         sendJson(res, 201, mapStudy(created));
       })
       .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
@@ -410,9 +583,9 @@ function handleApi(req, res, requestUrl) {
 
         const result = db.prepare(`
           UPDATE studies
-          SET patientId = ?, type = ?, date = ?, priority = ?, status = ?, sampleType = ?, fastingHours = ?, sampleCondition = ?, diagnosis = ?, resultFileName = ?, resultFileType = ?, resultFileData = ?, resultFileUploadedAt = ?, doctor = ?, folio = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
+          SET patientId = ?, type = ?, date = ?, priority = ?, status = ?, sampleType = ?, fastingHours = ?, sampleCondition = ?, diagnosis = ?, resultFileName = ?, resultFileType = ?, resultFileData = ?, resultFileUploadedAt = ?, resultParameters = ?, doctor = ?, folio = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).run(payload.patientId, payload.type, payload.date, payload.priority, payload.status, payload.sampleType, payload.fastingHours, payload.sampleCondition, payload.diagnosis, payload.resultFileName, payload.resultFileType, payload.resultFileData, payload.resultFileUploadedAt, payload.doctor, payload.folio, payload.notes, studyId);
+        `).run(payload.patientId, payload.type, payload.date, payload.priority, payload.status, payload.sampleType, payload.fastingHours, payload.sampleCondition, payload.diagnosis, payload.resultFileName, payload.resultFileType, payload.resultFileData, payload.resultFileUploadedAt, payload.resultParameters, payload.doctor, payload.folio, payload.notes, studyId);
 
         if (result.changes === 0) {
           sendJson(res, 404, { error: 'Estudio no encontrado' });
@@ -427,6 +600,7 @@ function handleApi(req, res, requestUrl) {
           WHERE studies.id = ?
         `).get(studyId);
 
+        logActivity(req.sessionUser.username, 'Actualizó estudio', 'study', studyId, `${payload.type} - ${updated.patientName || ''}`);
         sendJson(res, 200, mapStudy(updated));
       })
       .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
@@ -435,12 +609,14 @@ function handleApi(req, res, requestUrl) {
 
   if (req.method === 'DELETE' && pathname.startsWith('/api/studies/')) {
     const studyId = pathname.split('/').pop();
+    const existingStudy = db.prepare('SELECT * FROM studies WHERE id = ?').get(studyId);
     const result = db.prepare('DELETE FROM studies WHERE id = ?').run(studyId);
     if (result.changes === 0) {
       sendJson(res, 404, { error: 'Estudio no encontrado' });
       return true;
     }
 
+    logActivity(req.sessionUser.username, 'Eliminó estudio', 'study', studyId, existingStudy ? existingStudy.type : '');
     sendJson(res, 200, { ok: true });
     return true;
   }
@@ -469,8 +645,8 @@ function handleApi(req, res, requestUrl) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           const insertStudy = db.prepare(`
-            INSERT INTO studies (id, patientId, type, date, priority, status, sampleType, fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, doctor, folio, notes, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO studies (id, patientId, type, date, priority, status, sampleType, fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, resultParameters, doctor, folio, notes, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           for (const patient of patientsInput) {
@@ -521,6 +697,7 @@ function handleApi(req, res, requestUrl) {
               payload.resultFileType,
               payload.resultFileData,
               payload.resultFileUploadedAt,
+              payload.resultParameters,
               payload.doctor,
               payload.folio,
               payload.notes,
@@ -530,6 +707,7 @@ function handleApi(req, res, requestUrl) {
           }
 
           db.exec('COMMIT;');
+          logActivity(req.sessionUser.username, 'Restauró respaldo', 'backup', '', `${patientsInput.length} pacientes, ${studiesInput.length} estudios`);
           sendJson(res, 200, { ok: true });
         } catch (error) {
           db.exec('ROLLBACK;');
