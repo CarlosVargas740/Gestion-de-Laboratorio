@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestión de Laboratorio Clínico</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-orb orb-one"></div>
+    <div class="background-orb orb-two"></div>
+
+    <main class="app-shell">
+      <section class="hero-card">
+        <div>
+          <p class="eyebrow">Hospital Rural de San Carlos</p>
+          <h1>Sistema web para la gestión de laboratorio clínico</h1>
+        </div>
+
+        <div class="hero-stats" id="stats">
+          <article class="stat-box">
+            <span>Pacientes</span>
+            <strong id="totalPatients">0</strong>
+          </article>
+          <article class="stat-box">
+            <span>Estudios</span>
+            <strong id="totalStudies">0</strong>
+          </article>
+          <article class="stat-box">
+            <span>Resultados pendientes</span>
+            <strong id="pendingResults">0</strong>
+          </article>
+          <article class="stat-box">
+            <span>Resultados entregados</span>
+            <strong id="deliveredResults">0</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel report-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Reportes generales</h2>
+            <p>Resumen total de pacientes, estudios y distribución clínica del laboratorio.</p>
+          </div>
+          <div class="header-actions">
+            <button class="secondary-btn" type="button" id="downloadReportButton">Descargar JSON</button>
+            <button class="secondary-btn" type="button" id="printReportButton">Imprimir / PDF</button>
+          </div>
+        </div>
+
+        <div class="report-grid">
+          <article class="report-card">
+            <span>Pacientes por área</span>
+            <strong id="reportAreaTop">0</strong>
+            <small id="reportAreaLabel">Sin datos</small>
+          </article>
+          <article class="report-card">
+            <span>Estudio más solicitado</span>
+            <strong id="reportStudyTop">0</strong>
+            <small id="reportStudyLabel">Sin datos</small>
+          </article>
+          <article class="report-card">
+            <span>Progreso general</span>
+            <strong id="reportProgress">0%</strong>
+            <small>Resultados entregados respecto al total</small>
+          </article>
+          <article class="report-card">
+            <span>Pacientes activos</span>
+            <strong id="reportActivePatients">0</strong>
+            <small id="reportActiveLabel">Pacientes con estudios registrados</small>
+          </article>
+          <article class="report-card">
+            <span>Municipio principal</span>
+            <strong id="reportMunicipalityTop">0</strong>
+            <small id="reportMunicipalityLabel">Sin datos</small>
+          </article>
+          <article class="report-card">
+            <span>Derechohabiencia principal</span>
+            <strong id="reportAffiliationTop">0</strong>
+            <small id="reportAffiliationLabel">Sin datos</small>
+          </article>
+          <article class="report-card">
+            <span>Muestra más usada</span>
+            <strong id="reportSampleTop">0</strong>
+            <small id="reportSampleLabel">Sin datos</small>
+          </article>
+          <article class="report-card">
+            <span>Ayuno promedio</span>
+            <strong id="reportFastingAverage">0 h</strong>
+            <small id="reportFastingLabel">Promedio en estudios capturados</small>
+          </article>
+        </div>
+
+        <div class="report-columns">
+          <article class="report-list">
+            <h3>Estado de estudios</h3>
+            <ul id="reportStatusList"></ul>
+          </article>
+          <article class="report-list">
+            <h3>Tipos de estudio</h3>
+            <ul id="reportTypeList"></ul>
+          </article>
+        </div>
+
+        <div class="report-columns">
+          <article class="report-list">
+            <h3>Municipios con más pacientes</h3>
+            <ul id="reportMunicipalityList"></ul>
+          </article>
+          <article class="report-list">
+            <h3>Derechohabiencia</h3>
+            <ul id="reportAffiliationList"></ul>
+          </article>
+        </div>
+
+        <div class="report-columns">
+          <article class="report-list">
+            <h3>Tipos de muestra</h3>
+            <ul id="reportSampleList"></ul>
+          </article>
+          <article class="report-list">
+            <h3>Condición de muestra</h3>
+            <ul id="reportConditionList"></ul>
+          </article>
+        </div>
+
+        <article class="report-list activity-list">
+          <h3>Actividad reciente</h3>
+          <ul id="recentActivityList"></ul>
+        </article>
+      </section>
+
+      <section class="grid-layout">
+        <form class="panel form-panel" id="patientForm">
+          <div class="panel-header">
+            <h2>Registrar paciente</h2>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Nombre completo
+              <input type="text" id="patientName" required maxlength="80" />
+            </label>
+            <label>
+              CURP / ID
+              <input type="text" id="patientId" required maxlength="20" />
+            </label>
+            <label>
+              Edad
+              <input type="number" id="patientAge" min="0" max="120" required />
+            </label>
+            <label>
+              Sexo
+              <select id="patientSex" required>
+                <option value="">Selecciona</option>
+                <option value="Femenino">Femenino</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>
+            <label>
+              Teléfono
+              <input type="tel" id="patientPhone" maxlength="15" placeholder="Opcional" />
+            </label>
+            <label>
+              Área de atención
+              <select id="patientArea">
+                <option value="Consulta externa">Consulta externa</option>
+                <option value="Urgencias">Urgencias</option>
+                <option value="Hospitalización">Hospitalización</option>
+                <option value="Referencia">Referencia</option>
+              </select>
+            </label>
+            <label>
+              Municipio
+              <input type="text" id="patientMunicipality" value="San Carlos" maxlength="60" />
+            </label>
+            <label>
+              Localidad / Comunidad
+              <input type="text" id="patientLocality" maxlength="80" placeholder="Opcional" />
+            </label>
+            <label>
+              Derechohabiencia
+              <select id="patientAffiliation">
+                <option value="Sin derechohabiencia">Sin derechohabiencia</option>
+                <option value="IMSS Bienestar">IMSS Bienestar</option>
+                <option value="IMSS">IMSS</option>
+                <option value="ISSSTE">ISSSTE</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>
+          </div>
+
+          <button class="primary-btn" type="submit">Guardar paciente</button>
+        </form>
+
+        <form class="panel form-panel" id="studyForm">
+          <div class="panel-header">
+            <h2>Registrar estudio</h2>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Paciente
+              <select id="studyPatient" required></select>
+            </label>
+            <label>
+              Tipo de estudio
+              <select id="studyType" required>
+                <option value="">Selecciona</option>
+                <option value="Biometría hemática">Biometría hemática</option>
+                <option value="Química sanguínea">Química sanguínea</option>
+                <option value="Examen general de orina">Examen general de orina</option>
+                <option value="Coprológico">Coprológico</option>
+                <option value="Prueba de embarazo">Prueba de embarazo</option>
+                <option value="Serología">Serología</option>
+                <option value="Cultivo">Cultivo</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>
+            <label>
+              Fecha
+              <input type="date" id="studyDate" required />
+            </label>
+            <label>
+              Prioridad
+              <select id="studyPriority" required>
+                <option value="">Selecciona</option>
+                <option value="Normal">Normal</option>
+                <option value="Urgente">Urgente</option>
+                <option value="Prioritario">Prioritario</option>
+              </select>
+            </label>
+            <label>
+              Resultado
+              <select id="studyStatus" required>
+                <option value="">Selecciona</option>
+                <option value="En proceso">En proceso</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Entregado">Entregado</option>
+              </select>
+            </label>
+            <label>
+              Médico solicitante
+              <input type="text" id="studyDoctor" maxlength="80" placeholder="Opcional" />
+            </label>
+            <label>
+              Folio
+              <input type="text" id="studyFolio" maxlength="20" placeholder="Opcional" />
+            </label>
+            <label>
+              Tipo de muestra
+              <select id="studySampleType">
+                <option value="Sangre">Sangre</option>
+                <option value="Suero">Suero</option>
+                <option value="Orina">Orina</option>
+                <option value="Heces">Heces</option>
+                <option value="Exudado">Exudado</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>
+            <label>
+              Horas de ayuno
+              <input type="number" id="studyFastingHours" min="0" max="24" value="0" />
+            </label>
+            <label>
+              Condición de muestra
+              <select id="studySampleCondition">
+                <option value="Adecuada">Adecuada</option>
+                <option value="Hemolizada">Hemolizada</option>
+                <option value="Contaminada">Contaminada</option>
+                <option value="Repetir toma">Repetir toma</option>
+              </select>
+            </label>
+            <label>
+              Diagnóstico presuntivo
+              <input type="text" id="studyDiagnosis" maxlength="120" placeholder="Opcional" />
+            </label>
+          </div>
+
+          <label class="full-width">
+            Observaciones
+            <textarea id="studyNotes" rows="3" maxlength="180"></textarea>
+          </label>
+
+          <button class="primary-btn" type="submit">Guardar estudio</button>
+        </form>
+      </section>
+
+      <section class="panel list-panel">
+        <div class="panel-header list-header">
+          <div>
+            <h2>Pacientes registrados</h2>
+          </div>
+          <div class="header-actions">
+            <button class="secondary-btn" type="button" id="exportButton">Exportar respaldo</button>
+            <button class="secondary-btn" type="button" id="importButton">Importar respaldo</button>
+            <input type="file" id="importInput" accept="application/json" hidden />
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th>ID</th>
+                <th>Edad</th>
+                <th>Sexo</th>
+                <th>Municipio</th>
+                <th>Localidad</th>
+                <th>Área</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="patientsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel list-panel">
+        <div class="panel-header list-header">
+          <div>
+            <h2>Estudios registrados</h2>
+          </div>
+          <div class="filters-bar">
+            <label class="search-box">
+              Buscar
+              <input type="search" id="searchInput" placeholder="Nombre, ID, estudio o prioridad" />
+            </label>
+            <label class="filter-select">
+              Área
+              <select id="areaFilter">
+                <option value="">Todas</option>
+                <option value="Consulta externa">Consulta externa</option>
+                <option value="Urgencias">Urgencias</option>
+                <option value="Hospitalización">Hospitalización</option>
+                <option value="Referencia">Referencia</option>
+              </select>
+            </label>
+            <label class="filter-select">
+              Estado
+              <select id="statusFilter">
+                <option value="">Todos</option>
+                <option value="En proceso">En proceso</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Entregado">Entregado</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th>ID</th>
+                <th>Edad</th>
+                <th>Área</th>
+                <th>Estudio</th>
+                <th>Muestra</th>
+                <th>Ayuno</th>
+                <th>Prioridad</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <template id="patientsEmptyStateTemplate">
+        <tr>
+          <td colspan="8" class="empty-state">No hay pacientes registrados todavía.</td>
+        </tr>
+      </template>
+
+      <template id="emptyStateTemplate">
+        <tr>
+          <td colspan="11" class="empty-state">No hay estudios todavía. Comienza agregando un paciente y su estudio.</td>
+        </tr>
+      </template>
+
+      <div class="modal" id="editModal" hidden>
+        <div class="modal-backdrop" id="modalBackdrop"></div>
+        <div class="modal-dialog">
+          <div class="panel-header">
+            <div>
+              <h2 id="modalTitle">Editar registro</h2>
+              <p id="modalSubtitle">Actualiza la información sin salir de la pantalla.</p>
+            </div>
+            <button class="secondary-btn" type="button" id="closeModalButton">Cerrar</button>
+          </div>
+
+          <section id="hospitalReportView" class="hospital-report" hidden>
+            <div class="hospital-report-header">
+              <div>
+                <p class="eyebrow report-eyebrow">Reporte de hospital</p>
+                <h2 id="reportPatientTitle">Paciente</h2>
+                <p id="reportPatientSubtitle">Resumen clínico y laboratorial.</p>
+              </div>
+              <div class="header-actions">
+                <button class="secondary-btn" type="button" id="printPatientReportButton">Imprimir reporte</button>
+              </div>
+            </div>
+
+            <div class="report-hero-grid">
+              <article class="report-card report-card-compact">
+                <span>Paciente</span>
+                <strong id="reportPatientName">-</strong>
+                <small id="reportPatientCode">-</small>
+              </article>
+              <article class="report-card report-card-compact">
+                <span>Área / procedencia</span>
+                <strong id="reportPatientArea">-</strong>
+                <small id="reportPatientLocality">-</small>
+              </article>
+              <article class="report-card report-card-compact">
+                <span>Municipio / derechohabiencia</span>
+                <strong id="reportPatientMunicipality">-</strong>
+                <small id="reportPatientAffiliation">-</small>
+              </article>
+              <article class="report-card report-card-compact">
+                <span>Estudios realizados</span>
+                <strong id="reportPatientStudiesTotal">0</strong>
+                <small id="reportPatientStudiesSummary">Sin estudios registrados</small>
+              </article>
+            </div>
+
+            <div class="report-columns report-columns-tight">
+              <article class="report-list">
+                <h3>Datos del paciente</h3>
+                <ul id="reportPatientDataList"></ul>
+              </article>
+              <article class="report-list">
+                <h3>Indicadores clínicos</h3>
+                <ul id="reportPatientMetricsList"></ul>
+              </article>
+            </div>
+
+            <article class="report-list">
+              <h3>Estudios y observaciones</h3>
+              <div class="table-wrap report-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Estudio</th>
+                      <th>Muestra</th>
+                      <th>Ayuno</th>
+                      <th>Resultado</th>
+                      <th>Observaciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportStudiesTable"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="report-list">
+              <h3>Resumen médico</h3>
+              <p id="reportClinicalSummary" class="report-paragraph"></p>
+            </article>
+          </section>
+
+          <form id="editPatientForm" class="edit-form" hidden>
+            <input type="hidden" id="editPatientRecordId" />
+            <div class="form-grid">
+              <label>
+                Nombre completo
+                <input type="text" id="editPatientName" required maxlength="80" />
+              </label>
+              <label>
+                CURP / ID
+                <input type="text" id="editPatientCode" required maxlength="20" />
+              </label>
+              <label>
+                Edad
+                <input type="number" id="editPatientAge" min="0" max="120" required />
+              </label>
+              <label>
+                Sexo
+                <select id="editPatientSex" required>
+                  <option value="">Selecciona</option>
+                  <option value="Femenino">Femenino</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Teléfono
+                <input type="tel" id="editPatientPhone" maxlength="15" />
+              </label>
+              <label>
+                Área de atención
+                <select id="editPatientArea">
+                  <option value="Consulta externa">Consulta externa</option>
+                  <option value="Urgencias">Urgencias</option>
+                  <option value="Hospitalización">Hospitalización</option>
+                  <option value="Referencia">Referencia</option>
+                </select>
+              </label>
+              <label>
+                Municipio
+                <input type="text" id="editPatientMunicipality" maxlength="60" />
+              </label>
+              <label>
+                Localidad / Comunidad
+                <input type="text" id="editPatientLocality" maxlength="80" />
+              </label>
+              <label>
+                Derechohabiencia
+                <select id="editPatientAffiliation">
+                  <option value="Sin derechohabiencia">Sin derechohabiencia</option>
+                  <option value="IMSS Bienestar">IMSS Bienestar</option>
+                  <option value="IMSS">IMSS</option>
+                  <option value="ISSSTE">ISSSTE</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+            </div>
+            <button class="primary-btn" type="submit">Guardar cambios del paciente</button>
+          </form>
+
+          <form id="editStudyForm" class="edit-form" hidden>
+            <input type="hidden" id="editStudyRecordId" />
+            <div class="form-grid">
+              <label>
+                Paciente
+                <select id="editStudyPatient" required></select>
+              </label>
+              <label>
+                Tipo de estudio
+                <select id="editStudyType" required>
+                  <option value="">Selecciona</option>
+                  <option value="Biometría hemática">Biometría hemática</option>
+                  <option value="Química sanguínea">Química sanguínea</option>
+                  <option value="Examen general de orina">Examen general de orina</option>
+                  <option value="Coprológico">Coprológico</option>
+                  <option value="Prueba de embarazo">Prueba de embarazo</option>
+                  <option value="Serología">Serología</option>
+                  <option value="Cultivo">Cultivo</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Fecha
+                <input type="date" id="editStudyDate" required />
+              </label>
+              <label>
+                Prioridad
+                <select id="editStudyPriority" required>
+                  <option value="">Selecciona</option>
+                  <option value="Normal">Normal</option>
+                  <option value="Urgente">Urgente</option>
+                  <option value="Prioritario">Prioritario</option>
+                </select>
+              </label>
+              <label>
+                Resultado
+                <select id="editStudyStatus" required>
+                  <option value="">Selecciona</option>
+                  <option value="En proceso">En proceso</option>
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Entregado">Entregado</option>
+                </select>
+              </label>
+              <label>
+                Médico solicitante
+                <input type="text" id="editStudyDoctor" maxlength="80" />
+              </label>
+              <label>
+                Folio
+                <input type="text" id="editStudyFolio" maxlength="20" />
+              </label>
+              <label>
+                Tipo de muestra
+                <select id="editStudySampleType">
+                  <option value="Sangre">Sangre</option>
+                  <option value="Suero">Suero</option>
+                  <option value="Orina">Orina</option>
+                  <option value="Heces">Heces</option>
+                  <option value="Exudado">Exudado</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Horas de ayuno
+                <input type="number" id="editStudyFastingHours" min="0" max="24" />
+              </label>
+              <label>
+                Condición de muestra
+                <select id="editStudySampleCondition">
+                  <option value="Adecuada">Adecuada</option>
+                  <option value="Hemolizada">Hemolizada</option>
+                  <option value="Contaminada">Contaminada</option>
+                  <option value="Repetir toma">Repetir toma</option>
+                </select>
+              </label>
+              <label>
+                Diagnóstico presuntivo
+                <input type="text" id="editStudyDiagnosis" maxlength="120" />
+              </label>
+            </div>
+
+            <label class="full-width">
+              Observaciones
+              <textarea id="editStudyNotes" rows="3" maxlength="180"></textarea>
+            </label>
+
+            <button class="primary-btn" type="submit">Guardar cambios del estudio</button>
+          </form>
+        </div>
+      </div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
