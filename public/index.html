@@ -5,18 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestión de Laboratorio Clínico</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <link rel="icon" href="./assets/logo-imss.svg" type="image/svg+xml" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+      onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js';"
+    ></script>
   </head>
   <body>
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
 
-    <main class="app-shell">
-      <div class="session-bar">
-        <span>Sesión activa: <strong id="sessionUsername">-</strong></span>
-        <button class="secondary-btn" type="button" id="logoutButton">Cerrar sesión</button>
+    <nav class="imss-sidebar" aria-label="Apartados del sistema">
+      <div class="sidebar-brand">
+        <img src="./assets/logo-imss.svg" alt="Logotipo del laboratorio" />
+        <div class="sidebar-brand-text">
+          <strong>IMSS</strong>
+          <span>Laboratorio clínico</span>
+        </div>
       </div>
 
+      <div class="sidebar-nav" id="sidebarNav">
+        <button class="nav-btn active" type="button" data-view="view-inicio"><span class="nav-icon">🏠</span>Inicio</button>
+        <button class="nav-btn" type="button" data-view="view-reportes"><span class="nav-icon">📊</span>Reportes</button>
+        <button class="nav-btn" type="button" data-view="view-registrar-paciente"><span class="nav-icon">👤</span>Agregar paciente</button>
+        <button class="nav-btn" type="button" data-view="view-registrar-estudio"><span class="nav-icon">🧪</span>Agregar estudio</button>
+        <button class="nav-btn" type="button" data-view="view-pacientes"><span class="nav-icon">📋</span>Pacientes</button>
+        <button class="nav-btn" type="button" data-view="view-estudios"><span class="nav-icon">🗂️</span>Estudios</button>
+        <button class="nav-btn" type="button" data-view="view-bitacora"><span class="nav-icon">📝</span>Bitácora</button>
+      </div>
+
+      <div class="sidebar-footer">Instituto Mexicano del Seguro Social · Sistema interno de laboratorio</div>
+    </nav>
+
+    <div class="main-area">
+      <header class="imss-topbar">
+        <div class="topbar-title">
+          <strong>Hospital Rural de San Carlos</strong>
+          <span>Sistema de gestión de laboratorio clínico</span>
+        </div>
+        <div class="session-bar">
+          <span>Sesión activa: <strong id="sessionUsername">-</strong></span>
+          <button class="secondary-btn" type="button" id="logoutButton">Cerrar sesión</button>
+        </div>
+      </header>
+
+    <main class="app-shell">
+      <section class="view" id="view-inicio">
       <section class="hero-card">
         <div>
           <p class="eyebrow">Hospital Rural de San Carlos</p>
@@ -42,7 +76,9 @@
           </article>
         </div>
       </section>
+      </section>
 
+      <section class="view" id="view-reportes">
       <section class="panel report-panel">
         <div class="panel-header">
           <div>
@@ -53,6 +89,34 @@
             <button class="secondary-btn" type="button" id="downloadReportButton">Descargar JSON</button>
             <button class="secondary-btn" type="button" id="printReportButton">Imprimir / PDF</button>
           </div>
+        </div>
+
+        <div class="report-grid report-grid-alert">
+          <article class="report-card report-card-alert">
+            <span>Urgentes pendientes</span>
+            <strong id="reportUrgentPending">0</strong>
+            <small>Prioridad urgente sin entregar</small>
+          </article>
+          <article class="report-card report-card-alert">
+            <span>Estudios retrasados</span>
+            <strong id="reportDelayed">0</strong>
+            <small>Pendientes con más de 3 días</small>
+          </article>
+          <article class="report-card">
+            <span>Estudios de hoy</span>
+            <strong id="reportToday">0</strong>
+            <small>Registrados con fecha de hoy</small>
+          </article>
+          <article class="report-card">
+            <span>Últimos 7 días</span>
+            <strong id="reportWeek">0</strong>
+            <small>Estudios de la última semana</small>
+          </article>
+          <article class="report-card">
+            <span>Últimos 30 días</span>
+            <strong id="reportMonth">0</strong>
+            <small>Estudios del último mes</small>
+          </article>
         </div>
 
         <div class="report-grid">
@@ -111,6 +175,18 @@
             <h3>Pacientes por área</h3>
             <canvas id="chartArea"></canvas>
           </article>
+          <article class="chart-card">
+            <h3>Pacientes por sexo</h3>
+            <canvas id="chartSex"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>Estudios por prioridad</h3>
+            <canvas id="chartPriority"></canvas>
+          </article>
+          <article class="chart-card">
+            <h3>Pacientes por rango de edad</h3>
+            <canvas id="chartAge"></canvas>
+          </article>
         </div>
 
         <div class="report-columns">
@@ -121,6 +197,17 @@
           <article class="report-list">
             <h3>Tipos de estudio</h3>
             <ul id="reportTypeList"></ul>
+          </article>
+        </div>
+
+        <div class="report-columns">
+          <article class="report-list">
+            <h3>Médicos solicitantes</h3>
+            <ul id="reportDoctorList"></ul>
+          </article>
+          <article class="report-list">
+            <h3>Prioridad de estudios</h3>
+            <ul id="reportPriorityList"></ul>
           </article>
         </div>
 
@@ -151,7 +238,9 @@
           <ul id="recentActivityList"></ul>
         </article>
       </section>
+      </section>
 
+      <section class="view" id="view-bitacora">
       <section class="panel report-panel activity-log-panel">
         <div class="panel-header">
           <div>
@@ -161,8 +250,9 @@
         </div>
         <ul class="activity-log-list" id="activityLogList"></ul>
       </section>
+      </section>
 
-      <section class="grid-layout">
+      <section class="view" id="view-registrar-paciente">
         <form class="panel form-panel" id="patientForm">
           <div class="panel-header">
             <h2>Registrar paciente</h2>
@@ -225,7 +315,9 @@
 
           <button class="primary-btn" type="submit">Guardar paciente</button>
         </form>
+      </section>
 
+      <section class="view" id="view-registrar-estudio">
         <form class="panel form-panel" id="studyForm">
           <div class="panel-header">
             <h2>Registrar estudio</h2>
@@ -321,6 +413,7 @@
         </form>
       </section>
 
+      <section class="view" id="view-pacientes">
       <section class="panel list-panel">
         <div class="panel-header list-header">
           <div>
@@ -352,7 +445,9 @@
         </div>
         <div class="pagination" id="patientsPagination"></div>
       </section>
+      </section>
 
+      <section class="view" id="view-estudios">
       <section class="panel list-panel">
         <div class="panel-header list-header">
           <div>
@@ -406,6 +501,7 @@
           </table>
         </div>
         <div class="pagination" id="recordsPagination"></div>
+      </section>
       </section>
 
       <template id="patientsEmptyStateTemplate">
@@ -654,7 +750,9 @@
         </div>
       </div>
     </main>
+    </div>
 
     <script src="./app.js"></script>
+    <script src="./nav.js"></script>
   </body>
 </html>

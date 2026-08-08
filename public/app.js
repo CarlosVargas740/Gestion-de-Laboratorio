@@ -72,6 +72,13 @@ const reportSampleTop = document.getElementById('reportSampleTop');
 const reportSampleLabel = document.getElementById('reportSampleLabel');
 const reportFastingAverage = document.getElementById('reportFastingAverage');
 const reportFastingLabel = document.getElementById('reportFastingLabel');
+const reportUrgentPending = document.getElementById('reportUrgentPending');
+const reportDelayed = document.getElementById('reportDelayed');
+const reportToday = document.getElementById('reportToday');
+const reportWeek = document.getElementById('reportWeek');
+const reportMonth = document.getElementById('reportMonth');
+const reportDoctorList = document.getElementById('reportDoctorList');
+const reportPriorityList = document.getElementById('reportPriorityList');
 const reportStatusList = document.getElementById('reportStatusList');
 const reportTypeList = document.getElementById('reportTypeList');
 const reportMunicipalityList = document.getElementById('reportMunicipalityList');
@@ -110,6 +117,43 @@ const REFERENCE_RANGES = {
     { key: 'trigliceridos', label: 'Triglicéridos', unit: 'mg/dL', min: 0, max: 150 },
     { key: 'urea', label: 'Urea', unit: 'mg/dL', min: 15, max: 40 },
     { key: 'creatinina', label: 'Creatinina', unit: 'mg/dL', min: 0.6, max: 1.3 }
+  ],
+  'Examen general de orina': [
+    { key: 'color', label: 'Color', type: 'select', options: ['Amarillo', 'Ámbar', 'Rojizo', 'Turbio', 'Incoloro'], normal: 'Amarillo' },
+    { key: 'aspecto', label: 'Aspecto', type: 'select', options: ['Claro', 'Ligeramente turbio', 'Turbio'], normal: 'Claro' },
+    { key: 'densidad', label: 'Densidad urinaria', unit: '', min: 1.005, max: 1.03 },
+    { key: 'ph', label: 'pH', unit: '', min: 4.5, max: 8 },
+    { key: 'proteinas', label: 'Proteínas', type: 'select', options: ['Negativo', 'Trazas', 'Positivo'], normal: 'Negativo' },
+    { key: 'glucosaOrina', label: 'Glucosa', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' },
+    { key: 'cetonas', label: 'Cetonas', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' },
+    { key: 'nitritos', label: 'Nitritos', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' },
+    { key: 'leucocitosOrina', label: 'Leucocitos', unit: 'por campo', min: 0, max: 5 },
+    { key: 'eritrocitosOrina', label: 'Eritrocitos', unit: 'por campo', min: 0, max: 3 },
+    { key: 'bacterias', label: 'Bacterias', type: 'select', options: ['Ausentes', 'Escasas', 'Abundantes'], normal: 'Ausentes' }
+  ],
+  'Coprológico': [
+    { key: 'colorHeces', label: 'Color', type: 'select', options: ['Café', 'Verdoso', 'Negro', 'Pálido'], normal: 'Café' },
+    { key: 'consistencia', label: 'Consistencia', type: 'select', options: ['Formada', 'Blanda', 'Líquida', 'Dura'], normal: 'Formada' },
+    { key: 'sangreOculta', label: 'Sangre oculta', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' },
+    { key: 'leucocitosHeces', label: 'Leucocitos', unit: 'por campo', min: 0, max: 2 },
+    { key: 'parasitos', label: 'Parásitos', type: 'select', options: ['No se observan', 'Se observan'], normal: 'No se observan' },
+    { key: 'grasas', label: 'Grasas (esteatorrea)', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' }
+  ],
+  'Prueba de embarazo': [
+    { key: 'hcgCualitativa', label: 'hCG cualitativa', type: 'select', options: ['No reactivo', 'Reactivo'], normal: 'No reactivo' },
+    { key: 'hcgCuantitativa', label: 'hCG cuantitativa', unit: 'mUI/mL', min: 0, max: 5 }
+  ],
+  'Serología': [
+    { key: 'vdrl', label: 'VDRL (sífilis)', type: 'select', options: ['No reactivo', 'Reactivo'], normal: 'No reactivo' },
+    { key: 'vih', label: 'VIH (prueba rápida)', type: 'select', options: ['No reactivo', 'Reactivo'], normal: 'No reactivo' },
+    { key: 'hepatitisB', label: 'Hepatitis B (HBsAg)', type: 'select', options: ['No reactivo', 'Reactivo'], normal: 'No reactivo' },
+    { key: 'proteinaC', label: 'Proteína C reactiva', unit: 'mg/L', min: 0, max: 10 }
+  ],
+  'Cultivo': [
+    { key: 'crecimientoBacteriano', label: 'Crecimiento bacteriano', type: 'select', options: ['Negativo', 'Positivo'], normal: 'Negativo' },
+    { key: 'microorganismo', label: 'Microorganismo aislado', type: 'text', placeholder: 'Ej. E. coli' },
+    { key: 'ufc', label: 'Unidades formadoras de colonias', unit: 'UFC/mL', min: 0, max: 100000 },
+    { key: 'antibiograma', label: 'Sensibilidad a antibiótico(s)', type: 'text', placeholder: 'Ej. Sensible a ciprofloxacino' }
   ]
 };
 
@@ -128,6 +172,22 @@ function getFlagForValue(value, min, max) {
   return 'Normal';
 }
 
+function flagForParameter(parameter, value) {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+
+  if (parameter.type === 'text') {
+    return null;
+  }
+
+  if (parameter.type === 'select') {
+    return value === parameter.normal ? 'Normal' : 'Alterado';
+  }
+
+  return getFlagForValue(value, parameter.min, parameter.max);
+}
+
 function renderResultParameterFields(container, studyTypeValue, existingValues = {}) {
   const parameters = REFERENCE_RANGES[studyTypeValue];
   if (!container) {
@@ -144,20 +204,53 @@ function renderResultParameterFields(container, studyTypeValue, existingValues =
   container.innerHTML = parameters
     .map((parameter) => {
       const savedValue = existingValues[parameter.key] ?? '';
+      const fieldId = `param-${container.id}-${parameter.key}`;
+
+      if (parameter.type === 'select') {
+        const optionsHtml = ['<option value="">Selecciona</option>']
+          .concat(parameter.options.map((option) => `<option value="${option}" ${option === savedValue ? 'selected' : ''}>${option}</option>`))
+          .join('');
+        return `
+          <div class="result-parameter-field">
+            <label for="${fieldId}">${parameter.label}</label>
+            <select id="${fieldId}" data-param-key="${parameter.key}" data-param-type="select">${optionsHtml}</select>
+            <small>Valor normal: ${parameter.normal}</small>
+          </div>
+        `;
+      }
+
+      if (parameter.type === 'text') {
+        return `
+          <div class="result-parameter-field">
+            <label for="${fieldId}">${parameter.label}</label>
+            <input
+              type="text"
+              id="${fieldId}"
+              data-param-key="${parameter.key}"
+              data-param-type="text"
+              value="${savedValue}"
+              placeholder="${parameter.placeholder || ''}"
+              maxlength="80"
+            />
+          </div>
+        `;
+      }
+
       return `
         <div class="result-parameter-field">
-          <label for="param-${container.id}-${parameter.key}">${parameter.label}</label>
+          <label for="${fieldId}">${parameter.label}</label>
           <input
             type="number"
             step="0.01"
-            id="param-${container.id}-${parameter.key}"
+            id="${fieldId}"
             data-param-key="${parameter.key}"
+            data-param-type="number"
             data-param-min="${parameter.min}"
             data-param-max="${parameter.max}"
             value="${savedValue}"
             placeholder="${parameter.min} - ${parameter.max}"
           />
-          <small>Rango normal: ${parameter.min} - ${parameter.max} ${parameter.unit}</small>
+          <small>Rango normal: ${parameter.min} - ${parameter.max} ${parameter.unit || ''}</small>
         </div>
       `;
     })
@@ -175,10 +268,12 @@ function collectResultParameters(container, studyTypeValue) {
 
   parameters.forEach((parameter) => {
     const input = container.querySelector(`[data-param-key="${parameter.key}"]`);
-    if (input && input.value !== '') {
-      values[parameter.key] = Number(input.value);
-      hasAnyValue = true;
+    if (!input || input.value === '') {
+      return;
     }
+
+    values[parameter.key] = parameter.type === 'select' || parameter.type === 'text' ? input.value : Number(input.value);
+    hasAnyValue = true;
   });
 
   return hasAnyValue ? JSON.stringify(values) : '';
@@ -207,7 +302,7 @@ function buildResultFlagBadge(study) {
       if (value === undefined) {
         return null;
       }
-      return getFlagForValue(value, parameter.min, parameter.max);
+      return flagForParameter(parameter, value);
     })
     .filter(Boolean);
 
@@ -215,10 +310,13 @@ function buildResultFlagBadge(study) {
     return '';
   }
 
-  const worst = flags.includes('Alto') || flags.includes('Bajo') ? 'alterados' : 'normal';
-  const cssClass = worst === 'normal' ? 'result-flag-normal' : (flags.includes('Alto') ? 'result-flag-alto' : 'result-flag-bajo');
-  const label = worst === 'normal' ? 'Valores normales' : 'Valores alterados';
-  return `<span class="result-flag ${cssClass}">${label}</span>`;
+  const isAltered = flags.some((flag) => flag !== 'Normal');
+  if (!isAltered) {
+    return '<span class="result-flag result-flag-normal">Valores normales</span>';
+  }
+
+  const cssClass = flags.includes('Alto') ? 'result-flag-alto' : (flags.includes('Bajo') ? 'result-flag-bajo' : 'result-flag-alto');
+  return `<span class="result-flag ${cssClass}">Valores alterados</span>`;
 }
 
 let patientsPage = 1;
@@ -228,6 +326,9 @@ const PAGE_SIZE = 8;
 let statusChart = null;
 let typeChart = null;
 let areaChart = null;
+let sexChart = null;
+let priorityChart = null;
+let ageChart = null;
 
 const patientName = document.getElementById('patientName');
 const patientId = document.getElementById('patientId');
@@ -320,14 +421,71 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function getAgeBucket(age) {
+  const numericAge = Number(age);
+  if (Number.isNaN(numericAge)) {
+    return 'Sin dato';
+  }
+  if (numericAge <= 17) return '0-17';
+  if (numericAge <= 35) return '18-35';
+  if (numericAge <= 50) return '36-50';
+  if (numericAge <= 65) return '51-65';
+  return '66+';
+}
+
+function daysBetween(dateString) {
+  if (!dateString) {
+    return null;
+  }
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today - parsed) / (1000 * 60 * 60 * 24));
+}
+
+const AGE_BUCKET_ORDER = ['0-17', '18-35', '36-50', '51-65', '66+', 'Sin dato'];
+const DELAYED_THRESHOLD_DAYS = 3;
+
 function buildReportData() {
   const municipalityCounts = buildFrequencyMap(patients, (patient) => patient.municipality || 'San Carlos');
   const affiliationCounts = buildFrequencyMap(patients, (patient) => patient.affiliation || 'Sin derechohabiencia');
   const sampleCounts = buildFrequencyMap(studies, (study) => study.sampleType || 'Sangre');
   const conditionCounts = buildFrequencyMap(studies, (study) => study.sampleCondition || 'Adecuada');
+  const sexCounts = buildFrequencyMap(patients, (patient) => patient.sex || 'No especificado');
+  const priorityCounts = buildFrequencyMap(studies, (study) => study.priority || 'Normal');
+  const doctorCounts = buildFrequencyMap(studies, (study) => study.doctor || 'Sin médico registrado');
+
+  const ageCountsRaw = buildFrequencyMap(patients, (patient) => getAgeBucket(patient.age));
+  const ageCounts = {};
+  AGE_BUCKET_ORDER.forEach((bucket) => {
+    if (ageCountsRaw[bucket]) {
+      ageCounts[bucket] = ageCountsRaw[bucket];
+    }
+  });
+
   const fastingAverage = studies.length
     ? Math.round((studies.reduce((sum, study) => sum + Number(study.fastingHours || 0), 0) / studies.length) * 10) / 10
     : 0;
+
+  const pendingStudies = studies.filter((study) => (study.status || 'Pendiente') !== 'Entregado');
+  const urgentPending = pendingStudies.filter((study) => (study.priority || 'Normal') === 'Urgente').length;
+  const delayed = pendingStudies.filter((study) => {
+    const days = daysBetween(study.date);
+    return days !== null && days > DELAYED_THRESHOLD_DAYS;
+  }).length;
+
+  const studiesToday = studies.filter((study) => daysBetween(study.date) === 0).length;
+  const studiesWeek = studies.filter((study) => {
+    const days = daysBetween(study.date);
+    return days !== null && days >= 0 && days <= 7;
+  }).length;
+  const studiesMonth = studies.filter((study) => {
+    const days = daysBetween(study.date);
+    return days !== null && days >= 0 && days <= 30;
+  }).length;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -337,6 +495,13 @@ function buildReportData() {
       pending: studies.filter((study) => (study.status || 'Pendiente') === 'Pendiente').length,
       delivered: studies.filter((study) => (study.status || '') === 'Entregado').length
     },
+    timeIndicators: {
+      urgentPending,
+      delayed,
+      studiesToday,
+      studiesWeek,
+      studiesMonth
+    },
     distribution: {
       areaCounts: buildFrequencyMap(patients, (patient) => patient.area || 'Consulta externa'),
       municipalityCounts,
@@ -345,6 +510,10 @@ function buildReportData() {
       statusCounts: buildFrequencyMap(studies, (study) => study.status || 'Pendiente'),
       sampleCounts,
       conditionCounts,
+      sexCounts,
+      priorityCounts,
+      doctorCounts,
+      ageCounts,
       fastingAverage
     },
     patients,
@@ -561,13 +730,20 @@ function renderReports() {
     reportSampleLabel.textContent = 'Sin datos';
     reportFastingAverage.textContent = '0 h';
     reportFastingLabel.textContent = 'Promedio en estudios capturados';
+    reportUrgentPending.textContent = '0';
+    reportDelayed.textContent = '0';
+    reportToday.textContent = '0';
+    reportWeek.textContent = '0';
+    reportMonth.textContent = '0';
     reportStatusList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportTypeList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportMunicipalityList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportAffiliationList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportSampleList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
     reportConditionList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
-    renderCharts({}, {}, {});
+    reportDoctorList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
+    reportPriorityList.innerHTML = '<li>No hay suficientes registros para generar reportes.</li>';
+    renderCharts({}, {}, {}, {}, {}, {});
     return;
   }
 
@@ -579,6 +755,10 @@ function renderReports() {
   const statusCounts = reportData.distribution.statusCounts;
   const sampleCounts = reportData.distribution.sampleCounts;
   const conditionCounts = reportData.distribution.conditionCounts;
+  const sexCounts = reportData.distribution.sexCounts;
+  const priorityCounts = reportData.distribution.priorityCounts;
+  const doctorCounts = reportData.distribution.doctorCounts;
+  const ageCounts = reportData.distribution.ageCounts;
 
   const topArea = Object.entries(areaCounts).sort((left, right) => right[1] - left[1])[0];
   const topMunicipality = Object.entries(municipalityCounts).sort((left, right) => right[1] - left[1])[0];
@@ -604,6 +784,12 @@ function renderReports() {
   reportFastingAverage.textContent = `${reportData.distribution.fastingAverage} h`;
   reportFastingLabel.textContent = `${studies.length} estudios capturados`;
 
+  reportUrgentPending.textContent = String(reportData.timeIndicators.urgentPending);
+  reportDelayed.textContent = String(reportData.timeIndicators.delayed);
+  reportToday.textContent = String(reportData.timeIndicators.studiesToday);
+  reportWeek.textContent = String(reportData.timeIndicators.studiesWeek);
+  reportMonth.textContent = String(reportData.timeIndicators.studiesMonth);
+
   renderKeyValueList(reportStatusList, Object.entries(statusCounts), 'No hay estados registrados.');
 
   renderKeyValueList(reportTypeList, Object.entries(studyCounts).sort((left, right) => right[1] - left[1]), 'No hay tipos de estudio registrados.');
@@ -611,6 +797,8 @@ function renderReports() {
   renderKeyValueList(reportAffiliationList, Object.entries(affiliationCounts).sort((left, right) => right[1] - left[1]), 'No hay derechohabiencia registrada.');
   renderKeyValueList(reportSampleList, Object.entries(sampleCounts).sort((left, right) => right[1] - left[1]), 'No hay muestras registradas.');
   renderKeyValueList(reportConditionList, Object.entries(conditionCounts).sort((left, right) => right[1] - left[1]), 'No hay condiciones de muestra registradas.');
+  renderKeyValueList(reportDoctorList, Object.entries(doctorCounts).sort((left, right) => right[1] - left[1]).slice(0, 8), 'No hay médicos solicitantes registrados.');
+  renderKeyValueList(reportPriorityList, Object.entries(priorityCounts).sort((left, right) => right[1] - left[1]), 'No hay prioridades registradas.');
 
   const recentStudies = [...studies]
     .slice(0, 5)
@@ -622,7 +810,7 @@ function renderReports() {
 
   recentActivityList.innerHTML = recentStudies.join('') || '<li>No hay actividad reciente.</li>';
 
-  renderCharts(statusCounts, studyCounts, areaCounts);
+  renderCharts(statusCounts, studyCounts, areaCounts, sexCounts, priorityCounts, ageCounts);
 }
 
 const CHART_PALETTE = ['#1f6f78', '#e2823a', '#5f6778', '#13484e', '#d5efef', '#a3312f', '#9a5321'];
@@ -664,10 +852,13 @@ function buildChart(existingChart, canvasId, type, labels, values) {
   });
 }
 
-function renderCharts(statusCounts, studyCounts, areaCounts) {
+function renderCharts(statusCounts, studyCounts, areaCounts, sexCounts = {}, priorityCounts = {}, ageCounts = {}) {
   statusChart = buildChart(statusChart, 'chartStatus', 'doughnut', Object.keys(statusCounts), Object.values(statusCounts));
   typeChart = buildChart(typeChart, 'chartType', 'bar', Object.keys(studyCounts), Object.values(studyCounts));
   areaChart = buildChart(areaChart, 'chartArea', 'doughnut', Object.keys(areaCounts), Object.values(areaCounts));
+  sexChart = buildChart(sexChart, 'chartSex', 'doughnut', Object.keys(sexCounts), Object.values(sexCounts));
+  priorityChart = buildChart(priorityChart, 'chartPriority', 'doughnut', Object.keys(priorityCounts), Object.values(priorityCounts));
+  ageChart = buildChart(ageChart, 'chartAge', 'bar', Object.keys(ageCounts), Object.values(ageCounts));
 }
 
 async function loadActivityLog() {
