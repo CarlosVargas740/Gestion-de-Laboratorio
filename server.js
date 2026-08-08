@@ -63,6 +63,8 @@ db.exec(`
     fullName TEXT NOT NULL DEFAULT '',
     passwordHash TEXT NOT NULL,
     passwordSalt TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'captura',
+    active INTEGER NOT NULL DEFAULT 1,
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -105,25 +107,61 @@ ensureColumn('studies', 'resultFileType', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultFileData', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultFileUploadedAt', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('studies', 'resultParameters', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('users', 'role', "TEXT NOT NULL DEFAULT 'captura'");
+ensureColumn('users', 'active', 'INTEGER NOT NULL DEFAULT 1');
+
+// Las bases de datos creadas antes de que existieran roles no tenían ningún
+// usuario marcado como "admin". Si detectamos que ningún usuario tiene ese
+// rol, promovemos al usuario más antiguo para no dejar el sistema sin nadie
+// que pueda gestionar usuarios.
+const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;
+if (adminCount === 0) {
+  const oldestUser = db.prepare('SELECT id FROM users ORDER BY createdAt ASC LIMIT 1').get();
+  if (oldestUser) {
+    db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(oldestUser.id);
+  }
+}
 
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString('hex');
 }
 
-function createUser(username, password, fullName = '') {
+const VALID_ROLES = new Set(['admin', 'captura', 'lectura']);
+
+function createUser(username, password, fullName = '', role = 'captura') {
   const salt = crypto.randomBytes(16).toString('hex');
   const passwordHash = hashPassword(password, salt);
   const id = crypto.randomUUID();
+  const safeRole = VALID_ROLES.has(role) ? role : 'captura';
   db.prepare(`
-    INSERT INTO users (id, username, fullName, passwordHash, passwordSalt)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, username, fullName, passwordHash, salt);
+    INSERT INTO users (id, username, fullName, passwordHash, passwordSalt, role)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, username, fullName, passwordHash, salt, safeRole);
   return id;
+}
+
+function mapUser(row) {
+  return {
+    id: row.id,
+    username: row.username,
+    fullName: row.fullName || '',
+    role: row.role || 'captura',
+    active: Boolean(row.active),
+    createdAt: row.createdAt
+  };
+}
+
+function isAdmin(req) {
+  return Boolean(req.sessionUser && req.sessionUser.role === 'admin');
+}
+
+function canWrite(req) {
+  return Boolean(req.sessionUser && req.sessionUser.role !== 'lectura');
 }
 
 const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
 if (userCount === 0) {
-  createUser('admin', 'admin123', 'Administrador del laboratorio');
+  createUser('admin', 'admin123', 'Administrador del laboratorio', 'admin');
   console.log('Usuario inicial creado -> usuario: admin / contraseña: admin123 (cámbiala después de iniciar sesión)');
 }
 
@@ -172,7 +210,15 @@ function getSessionUser(req) {
     return null;
   }
 
-  return { userId: session.userId, username: session.username, token };
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.userId);
+  if (!user || !user.active) {
+    // El usuario fue desactivado o eliminado después de iniciar sesión:
+    // cerramos la sesión inmediatamente.
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    return null;
+  }
+
+  return { userId: session.userId, username: session.username, token, role: user.role || 'captura' };
 }
 
 const mimeTypes = {
@@ -358,6 +404,44 @@ function validateStudy(payload) {
   return { patientId, type, date, priority, status, sampleType, fastingHours: Number.isNaN(fastingHours) ? 0 : fastingHours, sampleCondition, diagnosis, resultFileName, resultFileType, resultFileData, resultFileUploadedAt, resultParameters, doctor, folio, notes };
 }
 
+// Genera el siguiente folio consecutivo del año en curso (p. ej. L-2026-0001).
+// Busca el folio más alto ya usado con ese prefijo (en vez de contar filas)
+// para que no se repita un folio aunque se hayan borrado estudios anteriores.
+function generateNextFolio() {
+  const year = new Date().getFullYear();
+  const prefix = `L-${year}-`;
+  const rows = db.prepare('SELECT folio FROM studies WHERE folio LIKE ?').all(`${prefix}%`);
+
+  let max = 0;
+  for (const row of rows) {
+    const suffix = (row.folio || '').slice(prefix.length);
+    const num = parseInt(suffix, 10);
+    if (!Number.isNaN(num) && num > max) {
+      max = num;
+    }
+  }
+
+  return `${prefix}${String(max + 1).padStart(4, '0')}`;
+}
+
+function validateUserPayload(body, { requirePassword }) {
+  const username = String(body.username || '').trim();
+  const fullName = String(body.fullName || '').trim();
+  const role = VALID_ROLES.has(body.role) ? body.role : 'captura';
+  const password = String(body.password || '');
+  const active = body.active === false || body.active === 0 ? 0 : 1;
+
+  if (!username) {
+    return { error: 'El nombre de usuario es obligatorio' };
+  }
+
+  if ((requirePassword || password) && password.length < 6) {
+    return { error: 'La contraseña debe tener al menos 6 caracteres' };
+  }
+
+  return { username, fullName, role, password, active };
+}
+
 const PUBLIC_ROUTES = new Set(['/api/health', '/api/login']);
 
 function handleApi(req, res, requestUrl) {
@@ -380,6 +464,11 @@ function handleApi(req, res, requestUrl) {
           return;
         }
 
+        if (!user.active) {
+          sendJson(res, 403, { error: 'Tu usuario está desactivado. Contacta a un administrador.' });
+          return;
+        }
+
         const token = crypto.randomUUID();
         const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
         db.prepare(`
@@ -390,7 +479,7 @@ function handleApi(req, res, requestUrl) {
         logActivity(user.username, 'Inicio de sesión', 'auth', user.id, '');
 
         res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DURATION_MS / 1000}`);
-        sendJson(res, 200, { ok: true, username: user.username, fullName: user.fullName });
+        sendJson(res, 200, { ok: true, username: user.username, fullName: user.fullName, role: user.role || 'captura' });
       })
       .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
     return true;
@@ -407,8 +496,8 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'GET' && pathname === '/api/session') {
-    const user = db.prepare('SELECT username, fullName FROM users WHERE id = ?').get(req.sessionUser.userId);
-    sendJson(res, 200, { username: req.sessionUser.username, fullName: user?.fullName || '' });
+    const user = db.prepare('SELECT username, fullName, role FROM users WHERE id = ?').get(req.sessionUser.userId);
+    sendJson(res, 200, { username: req.sessionUser.username, fullName: user?.fullName || '', role: user?.role || 'captura' });
     return true;
   }
 
@@ -447,6 +536,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'POST' && pathname === '/api/patients') {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite registrar pacientes' });
+      return true;
+    }
     readBody(req)
       .then((body) => {
         const payload = validatePatient(body);
@@ -476,6 +569,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'PUT' && pathname.startsWith('/api/patients/')) {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite editar pacientes' });
+      return true;
+    }
     const patientId = pathname.split('/').pop();
     readBody(req)
       .then((body) => {
@@ -511,6 +608,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'DELETE' && pathname.startsWith('/api/patients/')) {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite eliminar pacientes' });
+      return true;
+    }
     const patientId = pathname.split('/').pop();
     const existingPatient = db.prepare('SELECT * FROM patients WHERE id = ?').get(patientId);
     const result = db.prepare('DELETE FROM patients WHERE id = ?').run(patientId);
@@ -529,7 +630,16 @@ function handleApi(req, res, requestUrl) {
     return true;
   }
 
+  if (req.method === 'GET' && pathname === '/api/studies/next-folio') {
+    sendJson(res, 200, { folio: generateNextFolio() });
+    return true;
+  }
+
   if (req.method === 'POST' && pathname === '/api/studies') {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite registrar estudios' });
+      return true;
+    }
     readBody(req)
       .then((body) => {
         const payload = validateStudy(body);
@@ -542,6 +652,16 @@ function handleApi(req, res, requestUrl) {
         if (!patient) {
           sendJson(res, 400, { error: 'El paciente no existe' });
           return;
+        }
+
+        if (!payload.folio) {
+          payload.folio = generateNextFolio();
+        } else {
+          const duplicateFolio = db.prepare('SELECT id FROM studies WHERE folio = ?').get(payload.folio);
+          if (duplicateFolio) {
+            sendJson(res, 409, { error: `Ya existe un estudio con el folio "${payload.folio}"` });
+            return;
+          }
         }
 
         const id = String(body.id || crypto.randomUUID()).trim() || crypto.randomUUID();
@@ -566,6 +686,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'PUT' && pathname.startsWith('/api/studies/')) {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite editar estudios' });
+      return true;
+    }
     const studyId = pathname.split('/').pop();
     readBody(req)
       .then((body) => {
@@ -579,6 +703,16 @@ function handleApi(req, res, requestUrl) {
         if (!patient) {
           sendJson(res, 400, { error: 'El paciente no existe' });
           return;
+        }
+
+        if (!payload.folio) {
+          payload.folio = generateNextFolio();
+        } else {
+          const duplicateFolio = db.prepare('SELECT id FROM studies WHERE folio = ? AND id <> ?').get(payload.folio, studyId);
+          if (duplicateFolio) {
+            sendJson(res, 409, { error: `Ya existe un estudio con el folio "${payload.folio}"` });
+            return;
+          }
         }
 
         const result = db.prepare(`
@@ -608,6 +742,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'DELETE' && pathname.startsWith('/api/studies/')) {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite eliminar estudios' });
+      return true;
+    }
     const studyId = pathname.split('/').pop();
     const existingStudy = db.prepare('SELECT * FROM studies WHERE id = ?').get(studyId);
     const result = db.prepare('DELETE FROM studies WHERE id = ?').run(studyId);
@@ -621,6 +759,113 @@ function handleApi(req, res, requestUrl) {
     return true;
   }
 
+  // Gestión de usuarios: solo un administrador puede crear, editar o
+  // desactivar cuentas. El script de consola scripts/create-user.js sigue
+  // funcionando como alternativa, pero esta es la vía normal.
+  if (pathname === '/api/users' || pathname.startsWith('/api/users/')) {
+    if (!isAdmin(req)) {
+      sendJson(res, 403, { error: 'Solo un administrador puede gestionar usuarios' });
+      return true;
+    }
+  }
+
+  if (req.method === 'GET' && pathname === '/api/users') {
+    const rows = db.prepare('SELECT * FROM users ORDER BY createdAt ASC').all();
+    sendJson(res, 200, rows.map(mapUser));
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/users') {
+    readBody(req)
+      .then((body) => {
+        const payload = validateUserPayload(body, { requirePassword: true });
+        if (payload.error) {
+          sendJson(res, 400, { error: payload.error });
+          return;
+        }
+
+        const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(payload.username);
+        if (exists) {
+          sendJson(res, 409, { error: 'Ya existe un usuario con ese nombre' });
+          return;
+        }
+
+        const id = createUser(payload.username, payload.password, payload.fullName, payload.role);
+        if (payload.active === 0) {
+          db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+        }
+
+        logActivity(req.sessionUser.username, 'Creó usuario', 'user', id, `${payload.username} (${payload.role})`);
+        const created = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        sendJson(res, 201, mapUser(created));
+      })
+      .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
+    return true;
+  }
+
+  if (req.method === 'PUT' && pathname.startsWith('/api/users/')) {
+    const userId = pathname.split('/').pop();
+    readBody(req)
+      .then((body) => {
+        const target = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+        if (!target) {
+          sendJson(res, 404, { error: 'Usuario no encontrado' });
+          return;
+        }
+
+        const payload = validateUserPayload({ ...target, ...body }, { requirePassword: false });
+        if (payload.error) {
+          sendJson(res, 400, { error: payload.error });
+          return;
+        }
+
+        const duplicate = db.prepare('SELECT id FROM users WHERE username = ? AND id <> ?').get(payload.username, userId);
+        if (duplicate) {
+          sendJson(res, 409, { error: 'Ya existe otro usuario con ese nombre' });
+          return;
+        }
+
+        // No permitir que se quede el sistema sin ningún administrador activo.
+        const demotesOrDeactivatesAdmin = target.role === 'admin' && (payload.role !== 'admin' || payload.active === 0);
+        if (demotesOrDeactivatesAdmin) {
+          const otherActiveAdmins = db.prepare(
+            "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1 AND id <> ?"
+          ).get(userId).count;
+          if (otherActiveAdmins === 0) {
+            sendJson(res, 400, { error: 'Debe quedar al menos un administrador activo' });
+            return;
+          }
+        }
+
+        if (body.password) {
+          const salt = crypto.randomBytes(16).toString('hex');
+          const passwordHash = hashPassword(payload.password, salt);
+          db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(passwordHash, salt, userId);
+        }
+
+        db.prepare('UPDATE users SET username = ?, fullName = ?, role = ?, active = ? WHERE id = ?')
+          .run(payload.username, payload.fullName, payload.role, payload.active, userId);
+
+        if (payload.active === 0) {
+          // Si se desactiva, cerramos cualquier sesión activa de ese usuario.
+          db.prepare('DELETE FROM sessions WHERE userId = ?').run(userId);
+        }
+
+        logActivity(
+          req.sessionUser.username,
+          'Actualizó usuario',
+          'user',
+          userId,
+          `${payload.username} (${payload.role}${payload.active === 0 ? ', desactivado' : ''})`
+        );
+
+        const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+        sendJson(res, 200, mapUser(updated));
+      })
+      .catch(() => sendJson(res, 400, { error: 'Cuerpo JSON inválido' }));
+    return true;
+  }
+
   if (req.method === 'GET' && pathname === '/api/backup') {
     sendJson(res, 200, {
       generatedAt: new Date().toISOString(),
@@ -631,6 +876,10 @@ function handleApi(req, res, requestUrl) {
   }
 
   if (req.method === 'POST' && pathname === '/api/backup/restore') {
+    if (!canWrite(req)) {
+      sendJson(res, 403, { error: 'Tu rol es de solo lectura y no permite restaurar respaldos' });
+      return true;
+    }
     readBody(req)
       .then((body) => {
         const patientsInput = Array.isArray(body.patients) ? body.patients : [];

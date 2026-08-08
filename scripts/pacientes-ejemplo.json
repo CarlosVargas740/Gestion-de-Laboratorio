@@ -1,0 +1,220 @@
+[
+  {
+    "name": "María Fernanda López Torres",
+    "patientCode": "LOPT900512MTSRRR03",
+    "age": 34,
+    "sex": "Femenino",
+    "phone": "8341234567",
+    "area": "Consulta externa",
+    "municipality": "Victoria",
+    "locality": "Centro",
+    "affiliation": "IMSS Bienestar",
+    "studies": [
+      {
+        "type": "Biometría hemática",
+        "date": "2026-08-05",
+        "priority": "Normal",
+        "status": "Entregado",
+        "sampleType": "Sangre",
+        "fastingHours": 8,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Chequeo general",
+        "doctor": "Dra. Ana Ibarra",
+        "folio": "F-1001",
+        "notes": "Paciente en ayuno correcto",
+        "resultParameters": {
+          "hemoglobina": 13.2,
+          "hematocrito": 41,
+          "leucocitos": 6.8,
+          "plaquetas": 260
+        }
+      },
+      {
+        "type": "Química sanguínea",
+        "date": "2026-08-05",
+        "priority": "Normal",
+        "status": "Entregado",
+        "sampleType": "Suero",
+        "fastingHours": 10,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Descarte de diabetes",
+        "doctor": "Dra. Ana Ibarra",
+        "folio": "F-1002",
+        "notes": "",
+        "resultParameters": {
+          "glucosa": 118,
+          "colesterol": 190,
+          "trigliceridos": 140,
+          "urea": 28,
+          "creatinina": 0.9
+        }
+      }
+    ]
+  },
+  {
+    "name": "Juan Carlos Ramírez Salas",
+    "patientCode": "RASJ850230HTSMLN02",
+    "age": 41,
+    "sex": "Masculino",
+    "phone": "8347654321",
+    "area": "Urgencias",
+    "municipality": "Victoria",
+    "locality": "San Carlos",
+    "affiliation": "IMSS",
+    "studies": [
+      {
+        "type": "Biometría hemática",
+        "date": "2026-08-06",
+        "priority": "Urgente",
+        "status": "Pendiente",
+        "sampleType": "Sangre",
+        "fastingHours": 0,
+        "sampleCondition": "Hemolizada",
+        "diagnosis": "Sospecha de anemia",
+        "doctor": "Dr. Luis Peña",
+        "folio": "F-1003",
+        "notes": "Se solicita repetir toma por hemólisis",
+        "resultParameters": {
+          "hemoglobina": 10.1,
+          "hematocrito": 31,
+          "leucocitos": 12.4,
+          "plaquetas": 140
+        }
+      }
+    ]
+  },
+  {
+    "name": "Sofía Elena Martínez Cruz",
+    "patientCode": "MACS020815MTSRRF08",
+    "age": 4,
+    "sex": "Femenino",
+    "phone": "8349988776",
+    "area": "Hospitalización",
+    "municipality": "Padilla",
+    "locality": "Ejido La Loma",
+    "affiliation": "IMSS Bienestar",
+    "studies": [
+      {
+        "type": "Examen general de orina",
+        "date": "2026-08-04",
+        "priority": "Prioritario",
+        "status": "En proceso",
+        "sampleType": "Orina",
+        "fastingHours": 0,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Sospecha de infección urinaria",
+        "doctor": "Dra. Carla Núñez",
+        "folio": "F-1004",
+        "notes": "Muestra tomada por sonda",
+        "resultParameters": {
+          "color": "Turbio",
+          "aspecto": "Turbio",
+          "densidad": 1.02,
+          "ph": 6.5,
+          "proteinas": "Trazas",
+          "glucosaOrina": "Negativo",
+          "cetonas": "Negativo",
+          "nitritos": "Positivo",
+          "leucocitosOrina": 15,
+          "eritrocitosOrina": 2,
+          "bacterias": "Abundantes"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Rosa Isela Gómez Delgado",
+    "patientCode": "GODR780102MTSMLS01",
+    "age": 47,
+    "sex": "Femenino",
+    "phone": "8342211334",
+    "area": "Referencia",
+    "municipality": "Güémez",
+    "locality": "El Barretal",
+    "affiliation": "ISSSTE",
+    "studies": [
+      {
+        "type": "Prueba de embarazo",
+        "date": "2026-08-03",
+        "priority": "Normal",
+        "status": "Entregado",
+        "sampleType": "Suero",
+        "fastingHours": 0,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Descarte de embarazo",
+        "doctor": "Dr. Iván Solís",
+        "folio": "F-1005",
+        "notes": "",
+        "resultParameters": {
+          "hcgCualitativa": "No reactivo",
+          "hcgCuantitativa": 1.2
+        }
+      },
+      {
+        "type": "Serología",
+        "date": "2026-08-03",
+        "priority": "Normal",
+        "status": "Entregado",
+        "sampleType": "Suero",
+        "fastingHours": 0,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Panel de rutina",
+        "doctor": "Dr. Iván Solís",
+        "folio": "F-1006",
+        "notes": "",
+        "resultParameters": {
+          "vdrl": "No reactivo",
+          "vih": "No reactivo",
+          "hepatitisB": "No reactivo",
+          "proteinaC": 4.5
+        }
+      }
+    ]
+  },
+  {
+    "name": "Pedro Antonio Vega Ríos",
+    "patientCode": "VERP650719HTSGDD04",
+    "age": 61,
+    "sex": "Masculino",
+    "phone": "8345566778",
+    "area": "Consulta externa",
+    "municipality": "Victoria",
+    "locality": "Centro",
+    "affiliation": "Sin derechohabiencia",
+    "studies": [
+      {
+        "type": "Cultivo",
+        "date": "2026-07-30",
+        "priority": "Normal",
+        "status": "Entregado",
+        "sampleType": "Exudado",
+        "fastingHours": 0,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Herida infectada en pie derecho",
+        "doctor": "Dra. Carla Núñez",
+        "folio": "F-1007",
+        "notes": "Se recomienda seguimiento en 7 días",
+        "resultParameters": {
+          "crecimientoBacteriano": "Positivo",
+          "microorganismo": "Staphylococcus aureus",
+          "ufc": 45000,
+          "antibiograma": "Sensible a clindamicina y trimetoprima/sulfametoxazol"
+        }
+      },
+      {
+        "type": "Coprológico",
+        "date": "2026-07-28",
+        "priority": "Normal",
+        "status": "Pendiente",
+        "sampleType": "Heces",
+        "fastingHours": 0,
+        "sampleCondition": "Adecuada",
+        "diagnosis": "Dolor abdominal recurrente",
+        "doctor": "Dra. Carla Núñez",
+        "folio": "F-1008",
+        "notes": "",
+        "resultParameters": {}
+      }
+    ]
+  }
+]

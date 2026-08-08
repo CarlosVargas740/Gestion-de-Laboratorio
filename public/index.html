@@ -25,13 +25,14 @@
       </div>
 
       <div class="sidebar-nav" id="sidebarNav">
-        <button class="nav-btn active" type="button" data-view="view-inicio"><span class="nav-icon">🏠</span>Inicio</button>
-        <button class="nav-btn" type="button" data-view="view-reportes"><span class="nav-icon">📊</span>Reportes</button>
-        <button class="nav-btn" type="button" data-view="view-registrar-paciente"><span class="nav-icon">👤</span>Agregar paciente</button>
-        <button class="nav-btn" type="button" data-view="view-registrar-estudio"><span class="nav-icon">🧪</span>Agregar estudio</button>
-        <button class="nav-btn" type="button" data-view="view-pacientes"><span class="nav-icon">📋</span>Pacientes</button>
-        <button class="nav-btn" type="button" data-view="view-estudios"><span class="nav-icon">🗂️</span>Estudios</button>
-        <button class="nav-btn" type="button" data-view="view-bitacora"><span class="nav-icon">📝</span>Bitácora</button>
+        <button class="nav-btn active" type="button" data-view="view-inicio"></span>Inicio</button>
+        <button class="nav-btn" type="button" data-view="view-reportes"></span>Reportes</button>
+        <button class="nav-btn write-only" type="button" data-view="view-registrar-paciente"></span>Agregar paciente</button>
+        <button class="nav-btn write-only" type="button" data-view="view-registrar-estudio"></span>Agregar estudio</button>
+        <button class="nav-btn" type="button" data-view="view-pacientes"></span>Pacientes</button>
+        <button class="nav-btn" type="button" data-view="view-estudios"></span>Estudios</button>
+        <button class="nav-btn" type="button" data-view="view-bitacora"></span>Bitácora</button>
+        <button class="nav-btn admin-only" type="button" data-view="view-usuarios" hidden></span>Usuarios</button>
       </div>
 
       <div class="sidebar-footer">Instituto Mexicano del Seguro Social · Sistema interno de laboratorio</div>
@@ -252,6 +253,60 @@
       </section>
       </section>
 
+      <section class="view" id="view-usuarios">
+        <form class="panel form-panel" id="userForm">
+          <div class="panel-header">
+            <h2>Crear usuario</h2>
+            <p>Solo los administradores pueden crear, editar o desactivar usuarios.</p>
+          </div>
+          <div class="form-grid">
+            <label>
+              Usuario
+              <input type="text" id="userUsername" maxlength="40" required />
+            </label>
+            <label>
+              Contraseña
+              <input type="password" id="userPassword" maxlength="80" minlength="6" required placeholder="Mínimo 6 caracteres" />
+            </label>
+            <label>
+              Nombre completo
+              <input type="text" id="userFullName" maxlength="80" placeholder="Opcional" />
+            </label>
+            <label>
+              Rol
+              <select id="userRole" required>
+                <option value="captura">Captura (crea y edita)</option>
+                <option value="lectura">Solo lectura (solo consulta)</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+          </div>
+          <button class="primary-btn" type="submit">Crear usuario</button>
+        </form>
+
+        <section class="panel list-panel">
+          <div class="panel-header list-header">
+            <div>
+              <h2>Usuarios del sistema</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Nombre</th>
+                  <th>Rol</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="usersTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
       <section class="view" id="view-registrar-paciente">
         <form class="panel form-panel" id="patientForm">
           <div class="panel-header">
@@ -369,8 +424,8 @@
               <input type="text" id="studyDoctor" maxlength="80" placeholder="Opcional" />
             </label>
             <label>
-              Folio
-              <input type="text" id="studyFolio" maxlength="20" placeholder="Opcional" />
+              Folio <small>(autogenerado, editable si lo necesitas)</small>
+              <input type="text" id="studyFolio" maxlength="20" placeholder="Se genera automáticamente" />
             </label>
             <label>
               Tipo de muestra
@@ -477,6 +532,15 @@
                 <option value="Entregado">Entregado</option>
               </select>
             </label>
+            <label class="filter-select">
+              Desde
+              <input type="date" id="dateFromFilter" />
+            </label>
+            <label class="filter-select">
+              Hasta
+              <input type="date" id="dateToFilter" />
+            </label>
+            <button class="secondary-btn" type="button" id="clearDateFilterButton">Limpiar fechas</button>
           </div>
         </div>
 
@@ -746,6 +810,40 @@
             <div class="result-parameters-grid" id="editStudyResultParameters" hidden></div>
 
             <button class="primary-btn" type="submit">Guardar cambios del estudio</button>
+          </form>
+
+          <form id="editUserForm" class="edit-form" hidden>
+            <input type="hidden" id="editUserId" />
+            <div class="form-grid">
+              <label>
+                Usuario
+                <input type="text" id="editUserUsername" maxlength="40" required />
+              </label>
+              <label>
+                Nombre completo
+                <input type="text" id="editUserFullName" maxlength="80" placeholder="Opcional" />
+              </label>
+              <label>
+                Rol
+                <select id="editUserRole" required>
+                  <option value="captura">Captura (crea y edita)</option>
+                  <option value="lectura">Solo lectura (solo consulta)</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </label>
+              <label>
+                Estado
+                <select id="editUserActive" required>
+                  <option value="1">Activo</option>
+                  <option value="0">Desactivado</option>
+                </select>
+              </label>
+              <label>
+                Nueva contraseña
+                <input type="password" id="editUserPassword" maxlength="80" minlength="6" placeholder="Dejar vacío para no cambiarla" />
+              </label>
+            </div>
+            <button class="primary-btn" type="submit">Guardar cambios del usuario</button>
           </form>
         </div>
       </div>

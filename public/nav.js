@@ -24,4 +24,15 @@
   navButtons.forEach((button) => {
     button.addEventListener('click', () => showView(button.dataset.view));
   });
+
+  // Al cargar la página por primera vez ningún <section class="view"> tenía
+  // el atributo "hidden", así que todos se mostraban apilados uno tras otro
+  // (reportes, agregar paciente, etc. "todo seguido"). showView() solo se
+  // ejecutaba al hacer clic en un botón del menú. Con esta línea forzamos el
+  // mismo comportamiento desde el primer render, dejando visible únicamente
+  // la pestaña marcada como activa (o "Inicio" si ninguna lo está).
+  const initialButton = document.querySelector('.nav-btn.active[data-view]') || navButtons[0];
+  if (initialButton) {
+    showView(initialButton.dataset.view);
+  }
 })();

@@ -88,8 +88,25 @@ const reportConditionList = document.getElementById('reportConditionList');
 const recentActivityList = document.getElementById('recentActivityList');
 const areaFilter = document.getElementById('areaFilter');
 const statusFilter = document.getElementById('statusFilter');
+const dateFromFilter = document.getElementById('dateFromFilter');
+const dateToFilter = document.getElementById('dateToFilter');
+const clearDateFilterButton = document.getElementById('clearDateFilterButton');
 const downloadReportButton = document.getElementById('downloadReportButton');
 const printReportButton = document.getElementById('printReportButton');
+
+const userForm = document.getElementById('userForm');
+const userUsername = document.getElementById('userUsername');
+const userPassword = document.getElementById('userPassword');
+const userFullName = document.getElementById('userFullName');
+const userRole = document.getElementById('userRole');
+const usersTable = document.getElementById('usersTable');
+const editUserForm = document.getElementById('editUserForm');
+const editUserId = document.getElementById('editUserId');
+const editUserUsername = document.getElementById('editUserUsername');
+const editUserFullName = document.getElementById('editUserFullName');
+const editUserRole = document.getElementById('editUserRole');
+const editUserActive = document.getElementById('editUserActive');
+const editUserPassword = document.getElementById('editUserPassword');
 
 const totalPatients = document.getElementById('totalPatients');
 const totalStudies = document.getElementById('totalStudies');
@@ -357,8 +374,10 @@ const migrationKey = 'laboratorio-db-migrated';
 
 let patients = [];
 let studies = [];
+let systemUsers = [];
 let isReady = false;
 let currentPatientHospitalReport = null;
+let currentUserRole = 'captura';
 
 function requestJson(url, options = {}) {
   return fetch(url, {
@@ -613,8 +632,10 @@ function renderPatients() {
           <td>
             <div class="action-group">
               <button class="table-btn" type="button" data-action="view-report" data-id="${patient.id}">Reporte</button>
-              <button class="table-btn" type="button" data-action="edit-patient" data-id="${patient.id}">Editar</button>
-              <button class="table-btn danger" type="button" data-action="delete-patient" data-id="${patient.id}">Eliminar</button>
+              ${currentUserRole !== 'lectura' ? `
+                <button class="table-btn" type="button" data-action="edit-patient" data-id="${patient.id}">Editar</button>
+                <button class="table-btn danger" type="button" data-action="delete-patient" data-id="${patient.id}">Eliminar</button>
+              ` : ''}
             </div>
           </td>
         </tr>
@@ -633,6 +654,8 @@ function renderRecords() {
   const query = searchInput.value.trim().toLowerCase();
   const selectedArea = areaFilter.value;
   const selectedStatus = statusFilter.value;
+  const dateFrom = dateFromFilter.value;
+  const dateTo = dateToFilter.value;
   const filtered = studies.filter((study) => {
     const patient = patients.find((item) => item.id === study.patientId) || study.patient;
     if (!patient) {
@@ -655,6 +678,15 @@ function renderRecords() {
     }
 
     if (selectedStatus && status !== selectedStatus) {
+      return false;
+    }
+
+    const studyDate = study.date || '';
+    if (dateFrom && (!studyDate || studyDate < dateFrom)) {
+      return false;
+    }
+
+    if (dateTo && (!studyDate || studyDate > dateTo)) {
       return false;
     }
 
@@ -697,8 +729,10 @@ function renderRecords() {
           </td>
           <td>
             <div class="action-group">
-              <button class="table-btn" type="button" data-action="edit-study" data-id="${study.id}">Editar</button>
-              <button class="table-btn danger" type="button" data-action="delete-study" data-id="${study.id}">Eliminar</button>
+              ${currentUserRole !== 'lectura' ? `
+                <button class="table-btn" type="button" data-action="edit-study" data-id="${study.id}">Editar</button>
+                <button class="table-btn danger" type="button" data-action="delete-study" data-id="${study.id}">Eliminar</button>
+              ` : '<span class="muted">Solo lectura</span>'}
             </div>
           </td>
         </tr>
@@ -881,11 +915,174 @@ async function loadActivityLog() {
   }
 }
 
+const ROLE_LABELS = {
+  admin: 'Administrador',
+  captura: 'Captura',
+  lectura: 'Solo lectura'
+};
+
+async function loadUsers() {
+  if (currentUserRole !== 'admin') {
+    return;
+  }
+
+  try {
+    systemUsers = await requestJson('/api/users');
+    renderUsers();
+  } catch {
+    if (usersTable) {
+      usersTable.innerHTML = '<tr><td colspan="5" class="empty-state">No se pudo cargar la lista de usuarios.</td></tr>';
+    }
+  }
+}
+
+function renderUsers() {
+  if (!usersTable) {
+    return;
+  }
+
+  const rows = systemUsers
+    .map((user) => `
+      <tr>
+        <td>${user.username}</td>
+        <td>${user.fullName || ''}</td>
+        <td>${ROLE_LABELS[user.role] || user.role}</td>
+        <td><span class="tag ${user.active ? 'tag-entregado' : 'tag-pendiente'}">${user.active ? 'Activo' : 'Desactivado'}</span></td>
+        <td>
+          <div class="action-group">
+            <button class="table-btn" type="button" data-action="edit-user" data-id="${user.id}">Editar</button>
+            <button class="table-btn ${user.active ? 'danger' : ''}" type="button" data-action="toggle-user" data-id="${user.id}">
+              ${user.active ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+        </td>
+      </tr>
+    `)
+    .join('');
+
+  usersTable.innerHTML = rows || '<tr><td colspan="5" class="empty-state">No hay usuarios registrados todavía.</td></tr>';
+}
+
+function editUser(userIdValue) {
+  const user = systemUsers.find((item) => item.id === userIdValue);
+  if (!user) {
+    return;
+  }
+
+  editUserId.value = user.id;
+  editUserUsername.value = user.username || '';
+  editUserFullName.value = user.fullName || '';
+  editUserRole.value = user.role || 'captura';
+  editUserActive.value = user.active ? '1' : '0';
+  editUserPassword.value = '';
+  openModal('user', 'Editar usuario', 'Actualiza el rol, el estado o la contraseña.');
+}
+
+async function toggleUserActive(userIdValue) {
+  const user = systemUsers.find((item) => item.id === userIdValue);
+  if (!user) {
+    return;
+  }
+
+  const nextActive = !user.active;
+  const confirmed = window.confirm(
+    nextActive ? `¿Reactivar al usuario ${user.username}?` : `¿Desactivar al usuario ${user.username}? No podrá iniciar sesión.`
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await requestJson(`/api/users/${userIdValue}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        active: nextActive
+      })
+    });
+    await loadUsers();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+if (usersTable) {
+  usersTable.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) {
+      return;
+    }
+
+    const { action, id } = button.dataset;
+    if (action === 'edit-user') {
+      editUser(id);
+    }
+
+    if (action === 'toggle-user') {
+      toggleUserActive(id);
+    }
+  });
+}
+
+if (userForm) {
+  userForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    try {
+      await requestJson('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: userUsername.value.trim(),
+          password: userPassword.value,
+          fullName: userFullName.value.trim(),
+          role: userRole.value
+        })
+      });
+      userForm.reset();
+      userRole.value = 'captura';
+      await loadUsers();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
+if (editUserForm) {
+  editUserForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    try {
+      const payload = {
+        username: editUserUsername.value.trim(),
+        fullName: editUserFullName.value.trim(),
+        role: editUserRole.value,
+        active: editUserActive.value === '1'
+      };
+
+      if (editUserPassword.value) {
+        payload.password = editUserPassword.value;
+      }
+
+      await requestJson(`/api/users/${editUserId.value}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      closeModal();
+      await loadUsers();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
 function openModal(mode, title, subtitle) {
   modalTitle.textContent = title;
   modalSubtitle.textContent = subtitle;
   editPatientForm.hidden = mode !== 'patient';
   editStudyForm.hidden = mode !== 'study';
+  editUserForm.hidden = mode !== 'user';
   hospitalReportView.hidden = mode !== 'report';
   editModal.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -965,6 +1162,7 @@ function renderPatientHospitalReport(report) {
           <td>
             <div class="status-stack">
               <span class="tag tag-${String(study.status || 'Pendiente').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(study.status || 'Pendiente')}</span>
+              ${buildResultFlagBadge(study)}
               ${study.sampleCondition ? `<small>Condición: ${escapeHtml(study.sampleCondition)}</small>` : ''}
             </div>
           </td>
@@ -997,6 +1195,34 @@ function openPatientReport(patientIdValue) {
   openModal('report', 'Reporte de hospital', 'Resumen clínico y laboratorial del paciente.');
 }
 
+function buildResultParametersPrintText(study) {
+  const parameters = REFERENCE_RANGES[study.type];
+  if (!parameters || !study.resultParameters) {
+    return 'Sin valores capturados';
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(study.resultParameters);
+  } catch {
+    return 'Sin valores capturados';
+  }
+
+  const parts = parameters
+    .map((parameter) => {
+      const value = parsed[parameter.key];
+      if (value === undefined || value === '') {
+        return null;
+      }
+      const flag = flagForParameter(parameter, value);
+      const flagText = flag && flag !== 'Normal' ? ` (${flag})` : '';
+      return `${parameter.label}: ${value}${parameter.unit ? ` ${parameter.unit}` : ''}${flagText}`;
+    })
+    .filter(Boolean);
+
+  return parts.length ? parts.join(' · ') : 'Sin valores capturados';
+}
+
 function printPatientHospitalReport(report) {
   const studyRows = report.studies.length
     ? report.studies.map((study) => `
@@ -1006,11 +1232,12 @@ function printPatientHospitalReport(report) {
           <td>${escapeHtml(study.sampleType || 'Sangre')}</td>
           <td>${escapeHtml(`${study.fastingHours || 0} h`)}</td>
           <td>${escapeHtml(study.status || 'Pendiente')}</td>
+          <td>${escapeHtml(buildResultParametersPrintText(study))}</td>
           <td>${escapeHtml(study.diagnosis || 'Sin diagnóstico')}</td>
           <td>${escapeHtml(study.notes || 'Sin observaciones')}</td>
         </tr>
       `).join('')
-    : '<tr><td colspan="7">Sin estudios registrados.</td></tr>';
+    : '<tr><td colspan="8">Sin estudios registrados.</td></tr>';
 
   const html = `
     <!doctype html>
@@ -1060,6 +1287,7 @@ function printPatientHospitalReport(report) {
                 <th>Muestra</th>
                 <th>Ayuno</th>
                 <th>Resultado</th>
+                <th>Valores del análisis</th>
                 <th>Diagnóstico</th>
                 <th>Observaciones</th>
               </tr>
@@ -1107,6 +1335,9 @@ function updateViews() {
   renderRecords();
   renderReports();
   loadActivityLog();
+  if (currentUserRole === 'admin') {
+    loadUsers();
+  }
 }
 
 function resetPatientForm() {
@@ -1123,7 +1354,20 @@ function resetStudyForm() {
   studyFastingHours.value = 0;
   studySampleCondition.value = 'Adecuada';
   renderResultParameterFields(studyResultParametersContainer, '');
+  refreshFolioSuggestion();
   studyType.focus();
+}
+
+async function refreshFolioSuggestion() {
+  try {
+    const { folio } = await requestJson('/api/studies/next-folio');
+    if (!studyFolio.value) {
+      studyFolio.value = folio;
+    }
+  } catch {
+    // Si falla la sugerencia, el folio se puede seguir capturando a mano;
+    // el servidor igual lo autogenera si se deja vacío al guardar.
+  }
 }
 
 async function loadData() {
@@ -1717,6 +1961,29 @@ studyType.addEventListener('change', () => {
   renderResultParameterFields(studyResultParametersContainer, studyType.value);
 });
 
+document.querySelectorAll('.nav-btn[data-view="view-registrar-estudio"]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (!studyFolio.value) {
+      refreshFolioSuggestion();
+    }
+  });
+});
+
+dateFromFilter.addEventListener('change', () => {
+  recordsPage = 1;
+  renderRecords();
+});
+dateToFilter.addEventListener('change', () => {
+  recordsPage = 1;
+  renderRecords();
+});
+clearDateFilterButton.addEventListener('click', () => {
+  dateFromFilter.value = '';
+  dateToFilter.value = '';
+  recordsPage = 1;
+  renderRecords();
+});
+
 editStudyType.addEventListener('change', () => {
   renderResultParameterFields(editStudyResultParametersContainer, editStudyType.value);
 });
@@ -1731,11 +1998,28 @@ async function checkSession() {
   try {
     const session = await requestJson('/api/session');
     sessionUsername.textContent = session.fullName || session.username;
+    currentUserRole = session.role || 'captura';
+    applyRolePermissions();
     return true;
   } catch {
     window.location.href = '/login.html';
     return false;
   }
+}
+
+function applyRolePermissions() {
+  const isAdminRole = currentUserRole === 'admin';
+  const canWriteRole = currentUserRole !== 'lectura';
+
+  document.querySelectorAll('.admin-only').forEach((element) => {
+    element.hidden = !isAdminRole;
+  });
+
+  document.querySelectorAll('.write-only').forEach((element) => {
+    element.hidden = !canWriteRole;
+  });
+
+  importButton.disabled = !canWriteRole;
 }
 
 logoutButton.addEventListener('click', async () => {

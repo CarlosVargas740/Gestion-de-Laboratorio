@@ -103,7 +103,7 @@ Gestion-de-Laboratorio/
   presuntivo, valores de resultado, archivo de resultado, médico, folio,
   notas).
 - **users**: usuarios del sistema (usuario, nombre completo, contraseña
-  cifrada).
+  cifrada, rol, estado activo/desactivado).
 - **sessions**: sesiones activas de inicio de sesión.
 - **activity_log**: bitácora de acciones realizadas por los usuarios.
 
@@ -122,23 +122,54 @@ Gestion-de-Laboratorio/
 | GET    | `/api/activity-log`      | Últimos movimientos registrados en el sistema |
 | GET    | `/api/backup`             | Descarga respaldo completo (JSON)       |
 | POST   | `/api/backup/restore`    | Restaura un respaldo                     |
+| GET    | `/api/studies/next-folio` | Sugiere el siguiente folio consecutivo  |
+| GET/POST | `/api/users`            | Listar / crear usuarios (solo admin)    |
+| PUT    | `/api/users/:id`          | Editar / desactivar usuario (solo admin) |
 
 Todas las rutas, excepto `/api/health` y `/api/login`, requieren una sesión
-válida.
+válida. Las rutas de escritura (crear/editar/eliminar pacientes o estudios,
+restaurar respaldo) además requieren un usuario con rol distinto de
+`lectura`. Las rutas `/api/users` requieren rol `admin`.
+
+### Roles de usuario
+
+- **admin**: acceso completo, incluida la pantalla de "Usuarios".
+- **captura**: puede registrar y editar pacientes y estudios, pero no
+  gestionar usuarios.
+- **lectura**: solo puede consultar información (pensado para, por ejemplo,
+  un médico que solo necesita ver resultados). No ve los botones ni las
+  pantallas de captura/edición.
 
 ## Posibles mejoras futuras
 
-- Pantalla para administración de usuarios (crear, editar, cambiar
-  contraseña, desactivar) en lugar de un solo usuario fijo.
-- Roles diferenciados (recepción, laboratorista, jefe de laboratorio).
 - Carga real de archivos de resultado (actualmente se guarda como texto
   codificado dentro de la base de datos).
 - Rangos de referencia diferenciados por edad y sexo.
 - Pruebas automatizadas del backend.
 - Migración de SQLite a un motor de base de datos con soporte multiusuario
   concurrente si el laboratorio crece en volumen de operación.
+- Confirmación por correo/notificación cuando un estudio pasa a "Urgente" o
+  se acerca a "retrasado" (todavía no implementado).
 
 ## Autor
 
 Carlos Vargas — Ingeniería en Tecnologías de la Información e Innovación
 Digital, Universidad Politécnica de Victoria.
+
+## Historial de huecos detectados
+
+Lista original de pendientes y su estado actual:
+
+- ~~No hay pantalla para gestionar usuarios (crear/editar/desactivar)~~ →
+  **Resuelto.** Pantalla "Usuarios" (visible solo para administradores) en
+  `view-usuarios`, además de `scripts/create-user.js` como alternativa por
+  consola.
+- ~~No hay control de roles~~ → **Resuelto.** Roles `admin` / `captura` /
+  `lectura`; el rol `lectura` no puede crear, editar ni eliminar nada.
+- ~~No hay manera de buscar/filtrar estudios por rango de fechas~~ →
+  **Resuelto.** Filtros "Desde" / "Hasta" en la vista de Estudios.
+- ~~Los folios de estudio se capturan a mano~~ → **Resuelto.** El folio se
+  autogenera como consecutivo (`L-2026-0001`, `L-2026-0002`, ...) si se deja
+  vacío, y el servidor rechaza folios duplicados.
+- No hay confirmación por correo/notificación cuando un estudio pasa a
+  "Urgente" o se acerca a "retrasado" → **Pendiente.**
